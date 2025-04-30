@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		6AA246F19D1B5620CCA4647E /* Pods_Wuye_ios.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 545A51385C7015BA41686158 /* Pods_Wuye_ios.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		FD6E4A022DB8C50400C834DA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,14 +28,30 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		243C2358F13B1144068E888E /* Pods-Wuye_ios.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Wuye_ios.debug.xcconfig"; path = "Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios.debug.xcconfig"; sourceTree = "<group>"; };
+		24E6097D629CA0195E273D41 /* Pods-Wuye_ios.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Wuye_ios.release.xcconfig"; path = "Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios.release.xcconfig"; sourceTree = "<group>"; };
+		545A51385C7015BA41686158 /* Pods_Wuye_ios.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Wuye_ios.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD6E49F42DB8C50400C834DA /* Wuye_ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wuye_ios.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD6E4A012DB8C50400C834DA /* Wuye_iosTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Wuye_iosTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD6E4A0B2DB8C50400C834DA /* Wuye_iosUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Wuye_iosUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FDB143FB2DC07F08003DE8E1 /* Exceptions for "Wuye_ios" folder in "Wuye_ios" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				SupportingFiles/Info.plist,
+			);
+			target = FD6E49F32DB8C50400C834DA /* Wuye_ios */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FD6E49F62DB8C50400C834DA /* Wuye_ios */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FDB143FB2DC07F08003DE8E1 /* Exceptions for "Wuye_ios" folder in "Wuye_ios" target */,
+			);
 			path = Wuye_ios;
 			sourceTree = "<group>";
 		};
@@ -52,6 +72,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6AA246F19D1B5620CCA4647E /* Pods_Wuye_ios.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +93,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		185D759ABB65DF34A05C3A13 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				243C2358F13B1144068E888E /* Pods-Wuye_ios.debug.xcconfig */,
+				24E6097D629CA0195E273D41 /* Pods-Wuye_ios.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		AD142000CFF1A3ECDBE20190 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				545A51385C7015BA41686158 /* Pods_Wuye_ios.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		FD6E49EB2DB8C50400C834DA = {
 			isa = PBXGroup;
 			children = (
@@ -79,6 +117,8 @@
 				FD6E4A042DB8C50400C834DA /* Wuye_iosTests */,
 				FD6E4A0E2DB8C50400C834DA /* Wuye_iosUITests */,
 				FD6E49F52DB8C50400C834DA /* Products */,
+				185D759ABB65DF34A05C3A13 /* Pods */,
+				AD142000CFF1A3ECDBE20190 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -99,9 +139,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = FD6E4A152DB8C50400C834DA /* Build configuration list for PBXNativeTarget "Wuye_ios" */;
 			buildPhases = (
+				211B301242CBE983968DB5EC /* [CP] Check Pods Manifest.lock */,
 				FD6E49F02DB8C50400C834DA /* Sources */,
 				FD6E49F12DB8C50400C834DA /* Frameworks */,
 				FD6E49F22DB8C50400C834DA /* Resources */,
+				A98B6520860B8042A8F93448 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -111,8 +153,6 @@
 				FD6E49F62DB8C50400C834DA /* Wuye_ios */,
 			);
 			name = Wuye_ios;
-			packageProductDependencies = (
-			);
 			productName = Wuye_ios;
 			productReference = FD6E49F42DB8C50400C834DA /* Wuye_ios.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +174,6 @@
 				FD6E4A042DB8C50400C834DA /* Wuye_iosTests */,
 			);
 			name = Wuye_iosTests;
-			packageProductDependencies = (
-			);
 			productName = Wuye_iosTests;
 			productReference = FD6E4A012DB8C50400C834DA /* Wuye_iosTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +195,6 @@
 				FD6E4A0E2DB8C50400C834DA /* Wuye_iosUITests */,
 			);
 			name = Wuye_iosUITests;
-			packageProductDependencies = (
-			);
 			productName = Wuye_iosUITests;
 			productReference = FD6E4A0B2DB8C50400C834DA /* Wuye_iosUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -233,6 +269,52 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		211B301242CBE983968DB5EC /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Wuye_ios-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A98B6520860B8042A8F93448 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		FD6E49F02DB8C50400C834DA /* Sources */ = {
@@ -333,6 +415,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -389,12 +472,14 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
 		FD6E4A162DB8C50400C834DA /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 243C2358F13B1144068E888E /* Pods-Wuye_ios.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -402,7 +487,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JBVDGR6JV3;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Wuye_ios/SupportingFiles/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -423,6 +510,7 @@
 		};
 		FD6E4A172DB8C50400C834DA /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 24E6097D629CA0195E273D41 /* Pods-Wuye_ios.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -430,7 +518,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JBVDGR6JV3;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Wuye_ios/SupportingFiles/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
