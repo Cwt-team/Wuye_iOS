@@ -1,5 +1,3 @@
-import Foundation
-import GRDB
 
 // 注意：该文件已被移动到统一模型文件中，此文件应删除或保留为空，以避免重复声明
 

@@ -223,17 +223,39 @@ class LoginViewModel: ObservableObject {
         return true
     }
     
-    /// 执行登录操作
+    /// 执行登录
     private func performLogin() {
         if loginMethod == .password {
-            // 密码登录 (旧版API可能不支持，这里为了兼容，实际应调整为服务端支持的方式)
-            authManager.loginWithPassword(phone: phone, password: password) { [weak self] result in
-                self?.handleAuthResult(result)
+            // 密码登录
+            authManager.adminLogin(phone: phone, password: password) { [weak self] result in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.loginStatus = .success
+                        // 不需要额外处理 isLoggedIn，已在 AuthManager 中自动设置
+                    case .failure(let error):
+                        self.loginStatus = .failure(error.localizedDescription)
+                        self.generalError = error.localizedDescription
+                    }
+                }
             }
         } else {
             // 验证码登录
-            authManager.login(phone: phone, code: verificationCode) { [weak self] result in
-                self?.handleAuthResult(result)
+            authManager.verifyAndLogin(phone: phone, code: verificationCode) { [weak self] result in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.loginStatus = .success
+                        // 不需要额外处理 isLoggedIn，已在 AuthManager 中自动设置
+                    case .failure(let error):
+                        self.loginStatus = .failure(error.localizedDescription)
+                        self.generalError = error.localizedDescription
+                    }
+                }
             }
         }
     }

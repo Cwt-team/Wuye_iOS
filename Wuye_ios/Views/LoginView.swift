@@ -2,8 +2,8 @@ import SwiftUI
 
 // 登录界面视图
 struct LoginView: View {
-    // 使用单例的 AuthManager 管理登录状态
-    @ObservedObject var authManager = AuthManager.shared
+    // 使用环境对象获取AuthManager
+    @EnvironmentObject var authManager: AuthManager
     
     // 用户输入
     @State private var username = ""
@@ -21,9 +21,8 @@ struct LoginView: View {
     @State private var apiTestResult = ""
     @State private var apiTestSuccess = false
     
-    // 主题和导航
+    // 主题
     @Environment(\.colorScheme) var colorScheme
-    @State private var navigateToHome = false
     
     // 验证用户名
     private func validateUsername() -> Bool {
@@ -85,8 +84,7 @@ struct LoginView: View {
             switch result {
             case .success(_):
                 print("登录成功: \(username)")
-                // 登录成功，跳转到主页
-                navigateToHome = true
+                // 登录成功，AuthManager会自动更新isAuthenticated状态
             case .failure(let error):
                 // 登录失败，显示错误信息
                 errorMessage = error.localizedDescription
@@ -260,13 +258,6 @@ struct LoginView: View {
             }
             .padding(.bottom)
             .navigationBarHidden(true)
-            .background(
-                NavigationLink(
-                    destination: ContentView(),
-                    isActive: $navigateToHome,
-                    label: { EmptyView() }
-                )
-            )
             .alert(isPresented: $showAPITestResult) {
                 Alert(
                     title: Text(apiTestSuccess ? "测试成功" : "测试失败"),
@@ -281,5 +272,6 @@ struct LoginView: View {
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
         LoginView()
+            .environmentObject(AuthManager.shared)
     }
 }

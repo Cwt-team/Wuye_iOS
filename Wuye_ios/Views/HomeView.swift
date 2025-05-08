@@ -1,27 +1,29 @@
 import SwiftUI
 
 struct HomeView: View {
+    @EnvironmentObject var authManager: AuthManager
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 // 1. 用户信息区
-                HeaderView()
+                Home.HeaderView()
                     .padding(.bottom, 8)
                 
                 // 2. 滚动内容区
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
                         // 2.1 轮播图
-                        BannerView()
+                        Home.BannerView()
                         
                         // 2.2 功能九宫格
-                        FeatureGridView()
+                        Home.FeatureGridView()
                         
                         // 2.3 通知预览
-                        NotificationView()
+                        Home.NotificationView()
                         
                         // 2.4 生活服务横向滚动
-                        LifeServiceView()
+                        Home.LifeServiceView()
                     }
                     .padding(.top, 8)
                 }
@@ -29,6 +31,9 @@ struct HomeView: View {
             .background(Color.white)
             .navigationBarHidden(true)
             .accentColor(.purple)
+            .onAppear {
+                print("HomeView appeared - User: \(authManager.currentUser?.username ?? "Unknown")")
+            }
         }
     }
 }
@@ -36,6 +41,7 @@ struct HomeView: View {
 struct HomeView_Previews: PreviewProvider {
     static var previews: some View {
         HomeView()
+            .environmentObject(AuthManager.shared)
     }
 }
 

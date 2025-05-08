@@ -91,7 +91,7 @@ class APIService {
     private let baseURL = "https://api.wuye-app.com/api" // 正式环境地址
     private let debugURL = "https://dev-api.wuye-app.com/api" // 开发环境地址
     private let localURL = "http://127.0.0.1:5000/api" // 本地开发地址，改为5000端口
-    private let networkLocalURL = "http://192.168.1.21:5000/api" // 局域网IP地址，改为5000端口
+    private let networkLocalURL = "http://127.0.0.1:5000/api" // 局域网IP地址改为本地IP地址
     
     // 调试配置
     #if DEBUG
@@ -116,7 +116,7 @@ class APIService {
     
     // 当前环境
     #if DEBUG
-    private var currentBaseURL: String { 
+    var currentBaseURL: String { 
         let useLocal = UserDefaults.standard.bool(forKey: "UseLocalServer")
         let useNetworkLocal = UserDefaults.standard.bool(forKey: "UseNetworkLocalServer")
         
@@ -134,7 +134,7 @@ class APIService {
         }
     }
     #else
-    private var currentBaseURL: String { return baseURL }
+    var currentBaseURL: String { return baseURL }
     #endif
     
     // 会话管理器 - 使用Wuye_iosApp中定义的自定义会话
@@ -501,7 +501,7 @@ class APIService {
         }
     }
     
-    // 简单请求方法 - 直接使用URLSession
+    // 简单请求方法 - 使用应用的自定义会话而非URLSession.shared
     func simpleRequest<T: Decodable>(
         endpoint: String,
         method: String = "GET",
@@ -520,6 +520,9 @@ class APIService {
         // 创建请求
         var request = URLRequest(url: url)
         request.httpMethod = method
+        
+        // 设置更长的超时时间
+        request.timeoutInterval = 60 // 60秒超时时间，比默认的30秒更长
         
         // 添加认证头
         if requiresAuth, let token = KeychainHelper.shared.get(service: "auth", account: "token") {
@@ -575,10 +578,44 @@ class APIService {
         }
         #endif
         
-        // 发送请求
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            // 检查是否有错误
-            if let error = error {
+        // 使用应用的自定义会话发送请求，而不是使用共享的URLSession
+        // 这样可以利用应用中已配置的会话设置，包括证书信任、超时等
+        session.request(request).responseData { response in
+            switch response.result {
+            case .success(let data):
+                do {
+                    #if DEBUG
+                    if self.enableDetailedLogs {
+                        print("✅ 简单请求成功: \(urlString)")
+                        if self.logResponseBody, let str = String(data: data, encoding: .utf8) {
+                            print("响应数据: \(str)")
+                        }
+                    }
+                    #endif
+                    
+                    // 尝试解码为请求的类型
+                    let decoder = JSONDecoder()
+                    let decodedData = try decoder.decode(T.self, from: data)
+                    DispatchQueue.main.async {
+                        completion(.success(decodedData))
+                    }
+                } catch {
+                    #if DEBUG
+                    if self.enableDetailedLogs && self.logErrors {
+                        print("❌ 解码失败: \(urlString)")
+                        print("错误: \(error)")
+                        if let str = String(data: data, encoding: .utf8) {
+                            print("原始数据: \(str)")
+                        }
+                    }
+                    #endif
+                    
+                    DispatchQueue.main.async {
+                        let decodingError = DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Failed to decode: \(error)"))
+                        completion(.failure(APIError.decodingError(decodingError)))
+                    }
+                }
+            case .failure(let error):
                 #if DEBUG
                 if self.enableDetailedLogs && self.logErrors {
                     print("❌ 简单请求失败: \(urlString)")
@@ -589,72 +626,8 @@ class APIService {
                 DispatchQueue.main.async {
                     completion(.failure(APIError.createNetworkError(error)))
                 }
-                return
             }
-            
-            // 检查HTTP响应
-            guard let httpResponse = response as? HTTPURLResponse else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "APIService", code: -1, userInfo: [NSLocalizedDescriptionKey: "无效的HTTP响应"])))
-                }
-                return
-            }
-            
-            #if DEBUG
-            if self.enableDetailedLogs {
-                print("🔄 HTTP状态码: \(httpResponse.statusCode)")
-                if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                    print("📦 响应内容: \(responseString)")
-                }
-            }
-            #endif
-            
-            // 检查状态码
-            guard 200..<300 ~= httpResponse.statusCode else {
-                DispatchQueue.main.async {
-                    let message = String(data: data ?? Data(), encoding: .utf8) ?? "Unknown error"
-                    completion(.failure(NSError(domain: "APIService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
-                }
-                return
-            }
-            
-            // 检查数据
-            guard let data = data else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "APIService", code: -1, userInfo: [NSLocalizedDescriptionKey: "没有数据"])))
-                }
-                return
-            }
-            
-            // 尝试解析数据
-            do {
-                let decoder = JSONDecoder()
-                let result = try decoder.decode(T.self, from: data)
-                
-                DispatchQueue.main.async {
-                    completion(.success(result))
-                }
-            } catch {
-                #if DEBUG
-                if self.enableDetailedLogs && self.logErrors {
-                    print("❌ 解析响应失败: \(error.localizedDescription)")
-                    if let str = String(data: data, encoding: .utf8) {
-                        print("Raw response: \(str)")
-                    }
-                }
-                #endif
-                
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-            }
-            
-            #if DEBUG
-            if self.enableDetailedLogs {
-                print("——— Simple API Response ———\n")
-            }
-            #endif
-        }.resume()
+        }
     }
     
     // 简单请求方法 - 返回Any类型的数据，用于处理未知结构的响应

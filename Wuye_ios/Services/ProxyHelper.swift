@@ -22,9 +22,9 @@ class ProxyHelper {
                httpProxy == "127.0.0.1",
                let httpPort = proxySettings[kCFNetworkProxiesHTTPPort] as? Int,
                httpPort == 7897 {
-                updatedProxySettings[kCFNetworkProxiesHTTPPort] = 8080
+                updatedProxySettings[kCFNetworkProxiesHTTPPort] = 5000
                 isChanged = true
-                print("⚠️ 检测到错误的HTTP代理端口(7897)，已修改为8080")
+                print("⚠️ 检测到错误的HTTP代理端口(7897)，已修改为5000")
             }
             
             // 我们无法在iOS上直接访问HTTPS和SOCKS代理设置常量，因为这些常量在iOS SDK中不可用
@@ -62,9 +62,9 @@ class ProxyHelper {
            httpProxy == "127.0.0.1",
            let httpPort = cfDict[httpPortKey] as? Int,
            httpPort == 7897 {
-            updatedDict[httpPortKey] = 8080
+            updatedDict[httpPortKey] = 5000
             isChanged = true
-            print("⚠️ 已修改系统HTTP代理端口：7897 -> 8080")
+            print("⚠️ 已修改系统HTTP代理端口：7897 -> 5000")
         }
         
         // 在iOS平台上，只处理HTTP代理设置

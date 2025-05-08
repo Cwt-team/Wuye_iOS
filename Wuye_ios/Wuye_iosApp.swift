@@ -26,15 +26,15 @@ struct Wuye_iosApp: App {
     // 应用委托对象
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
-    // 环境对象
+    // 创建应用级别的环境对象
     @StateObject private var authManager = AuthManager.shared
     
     // 存储自定义会话，以便在app的整个生命周期中使用
     static let customSession: Session = {
         // 创建定制的会话配置
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 30
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 60
         
         // 在开发环境中，允许自签名证书和无效证书
         let serverTrustManager = ServerTrustManager(evaluators: [
@@ -75,7 +75,7 @@ struct Wuye_iosApp: App {
         UserDefaults.standard.set(true, forKey: "UseLocalServer")
         // 设置使用局域网IP地址
         UserDefaults.standard.set(true, forKey: "UseNetworkLocalServer")
-        print("⚠️ 开发模式: 默认使用局域网服务器 192.168.1.21:8080")
+        print("⚠️ 开发模式: 默认使用本地服务器 127.0.0.1:5000")
         // 检查并修复代理设置
         Self.configureNetworkProxy()
         // 配置SSL证书信任
@@ -91,6 +91,7 @@ struct Wuye_iosApp: App {
             NavigationView {
                 LaunchView()
             }
+            .environmentObject(authManager)
         }
     }
     
@@ -110,7 +111,7 @@ struct Wuye_iosApp: App {
         
         // 打印提示信息
         #if DEBUG
-        print("🔧 已完成网络代理配置检查，确保使用正确端口")
+        print("🔧 已完成网络代理配置检查，确保使用正确端口 (5000)")
         #endif
     }
     
@@ -118,7 +119,7 @@ struct Wuye_iosApp: App {
     private static func configureSSLTrust() {
         #if DEBUG
         print("🔐 配置SSL证书信任...")
-        print("✅ 已创建定制会话: timeoutInterval=30s, 已配置SSL证书信任策略")
+        print("✅ 已创建定制会话: timeoutInterval=60s, 已配置SSL证书信任策略")
         #endif
     }
 }

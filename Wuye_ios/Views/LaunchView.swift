@@ -1,15 +1,17 @@
 import SwiftUI
 
 struct LaunchView: View {
-    @StateObject private var authManager = AuthManager.shared
+    @EnvironmentObject var authManager: AuthManager
     @State private var showAPITest = false
 
     var body: some View {
         Group {
             if authManager.isAuthenticated {
                 ContentView()
+                    .environmentObject(authManager)
             } else {
                 LoginView()
+                    .environmentObject(authManager)
                     .overlay(
                         VStack {
                             Spacer()
@@ -39,5 +41,13 @@ struct LaunchView: View {
         .sheet(isPresented: $showAPITest) {
             APITestView()
         }
+    }
+}
+
+// MARK: - Preview
+struct LaunchView_Previews: PreviewProvider {
+    static var previews: some View {
+        LaunchView()
+            .environmentObject(AuthManager.shared)
     }
 }

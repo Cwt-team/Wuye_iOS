@@ -52,17 +52,16 @@ struct User: Codable, FetchableRecord, PersistableRecord {
     
     // 从OwnerInfo转换的初始化方法
     init(from ownerInfo: Models.AdminLoginResponse.OwnerInfo) {
-        self.id = ownerInfo.id
-        self.username = ownerInfo.username
-        self.password = "" // 不存储密码
-        self.phone = ownerInfo.phone
-        self.email = ownerInfo.email ?? ""
-        self.address = ownerInfo.address ?? ""
-        self.avatarURL = nil
-        self.community = nil
-        self.syncStatus = "synced"
-        self.createdAt = Date()
-        self.updatedAt = Date()
+        self.init(
+            id: ownerInfo.id,
+            username: ownerInfo.name,
+            password: "", // 不存储密码
+            phone: ownerInfo.phoneNumber,
+            email: ownerInfo.email ?? "",
+            address: ownerInfo.address ?? "",
+            avatarURL: nil,
+            community: ownerInfo.communityId != nil ? String(ownerInfo.communityId!) : nil
+        )
     }
     
     // 标记为已同步

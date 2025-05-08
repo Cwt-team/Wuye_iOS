@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject var authManager: AuthManager
+    
     var body: some View {
         TabView {
             HomeView()
@@ -12,5 +14,8 @@ struct MainTabView: View {
         }
         .accentColor(.purple)
         .background(Color.white)
+        .onAppear {
+            print("MainTabView appeared - User logged in: \(authManager.isLoggedIn)")
+        }
     }
 }
