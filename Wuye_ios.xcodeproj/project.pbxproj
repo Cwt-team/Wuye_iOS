@@ -57,15 +57,11 @@
 		};
 		FD6E4A042DB8C50400C834DA /* Wuye_iosTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Wuye_iosTests;
 			sourceTree = "<group>";
 		};
 		FD6E4A0E2DB8C50400C834DA /* Wuye_iosUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Wuye_iosUITests;
 			sourceTree = "<group>";
 		};
@@ -305,9 +301,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Wuye_ios/Pods-Wuye_ios-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
