@@ -6,6 +6,43 @@ import UserNotifications
 
 // 呼叫管理器类 - 处理来电和通话状态
 class CallManager: ObservableObject {
+    // 添加单例实例
+    static let shared = CallManager()
+    
+    // 发布状态变化
+    @Published var state: CallManagerState = .idle
+    @Published var currentCaller: String = ""
+    @Published var currentNumber: String = ""
+    @Published var errorMessage: String = ""
+    
+    // 私有初始化器确保只有一个实例
+    private init() {
+        print("[CallManager] 开始初始化")
+        // 先获取SipManager引用，避免重复创建
+        self.sipManager = SipManager.shared
+        setupAudioPermissions()
+        
+        // 立即设置回调，而不是延迟
+        self.setupCallbacks()
+        
+        // 添加模拟器特有的模拟来电通知监听
+        #if targetEnvironment(simulator)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSimulatedIncomingCall(_:)),
+            name: NSNotification.Name("SimulatedIncomingCall"),
+            object: nil
+        )
+        print("[CallManager] 模拟器环境：已添加模拟来电通知监听")
+        #endif
+        
+        // 延迟刷新SIP注册
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.refreshSipRegistration()
+            print("[CallManager] 已初始化并刷新SIP注册")
+        }
+    }
+    
     @Published var incomingCall: IncomingCallInfo?
     @Published var isCallActive: Bool = false
     @Published var callStartTime: Date? = nil
@@ -15,31 +52,9 @@ class CallManager: ObservableObject {
     // 修改为强引用以确保callback不会被释放
     private var callbackHandler: IncomingCallHandler?
     
-    init() {
-        print("[CallManager] 开始初始化")
-        // 先获取SipManager引用，避免重复创建
-        self.sipManager = SipManager.shared
-        setupAudioPermissions()
-        
-        // 立即设置回调，而不是延迟
-        self.setupCallbackHandler()
-        
-        // 延迟刷新SIP注册
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.refreshSipRegistration()
-            print("[CallManager] 已初始化并刷新SIP注册")
-        }
-    }
-    
-    private func setupCallbackHandler() {
-        // 创建回调处理程序
-        self.callbackHandler = IncomingCallHandler(callManager: self)
-        if let callback = self.callbackHandler {
-            sipManager?.setSipCallback(callback)
-        print("[CallManager] 已设置SIP回调处理程序")
-        } else {
-            print("[CallManager] 警告：无法创建回调处理程序")
-        }
+    // 设置回调
+    private func setupCallbacks() {
+        SipManager.shared.setCallback(CallManagerCallback(manager: self))
     }
     
     private func setupAudioPermissions() {
@@ -55,82 +70,31 @@ class CallManager: ObservableObject {
     
     // 处理来电
     func handleIncomingCall(caller: String, number: String) {
-        // 确保在主线程更新UI
-        if !Thread.isMainThread {
+        print("[CallManager] 收到来电: \(caller), 号码: \(number)")
         DispatchQueue.main.async {
-                self.handleIncomingCall(caller: caller, number: number)
-            }
-            return
-        }
-        
-        // 生成一个唯一来电ID以便跟踪
-        let callId = UUID().uuidString.prefix(8)
-        print("[CallManager] 收到来电 [\(callId)]: \(caller) - \(number)")
-        
-        // 设置来电信息
-            self.incomingCall = IncomingCallInfo(name: caller, number: number)
-        self.isCallActive = true
-        
-        // 播放系统声音提示来电
-            self.playIncomingCallSound()
-        
-        // 详细记录来电状态
-        print("[CallManager] [\(callId)] 来电信息已设置: name=\(caller), number=\(number)")
-        print("[CallManager] [\(callId)] 活动状态已更新: isCallActive=\(self.isCallActive)")
-        print("[CallManager] [\(callId)] incomingCall对象: \(String(describing: self.incomingCall))")
-        
-        // 立即发送通知以触发UI更新
-        print("[CallManager] [\(callId)] 正在发送来电通知...")
-        let callInfo: [String: Any] = [
-            "caller": caller,
-            "number": number,
-            "id": callId
-        ]
-        
-        NotificationCenter.default.post(
-            name: NSNotification.Name("IncomingCallReceived"),
-            object: self,
-            userInfo: callInfo
-        )
-        print("[CallManager] [\(callId)] 来电通知已发送")
-        
-        // 延迟500毫秒后再次发送通知，确保UI接收到
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("[CallManager] [\(callId)] 发送延迟备份通知...")
-            NotificationCenter.default.post(
-                name: NSNotification.Name("IncomingCallReceived"),
-                object: self,
-                userInfo: callInfo
-            )
-        }
-        
-        // 发送系统通知以在后台提醒用户
-        let content = UNMutableNotificationContent()
-        content.title = "来电"
-        content.body = "\(caller) 正在呼叫你"
-        content.sound = UNNotificationSound.default
-        
-        let request = UNNotificationRequest(identifier: "call-\(callId)", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("[CallManager] [\(callId)] 发送系统通知失败: \(error)")
-            } else {
-                print("[CallManager] [\(callId)] 系统通知已发送")
-            }
+            self.state = .incoming
+            self.currentCaller = caller
+            self.currentNumber = number
+            
+            // 使用辅助类显示来电界面
+            IncomingCallDisplayHelper.shared.showIncomingCall(caller: caller, number: number)
         }
     }
     
-    // 清除来电状态
+    // 清理来电状态
     func clearIncomingCall() {
         DispatchQueue.main.async {
-            print("[CallManager] 清除来电状态")
-            self.incomingCall = nil
-            self.isCallActive = false
-            
-            // 发送通知，以便LaunchView关闭来电界面
-            print("[CallManager] 正在发送来电结束通知...")
-            NotificationCenter.default.post(name: NSNotification.Name("IncomingCallEnded"), object: nil)
-            print("[CallManager] 已发送来电结束通知")
+            if self.state == .incoming {
+                self.state = .idle
+                self.currentCaller = ""
+                self.currentNumber = ""
+                self.errorMessage = ""
+                
+                // 确保关闭来电界面
+                IncomingCallDisplayHelper.shared.dismissIncomingCall()
+                
+                print("[CallManager] 清除来电状态")
+            }
         }
     }
     
@@ -191,6 +155,60 @@ class CallManager: ObservableObject {
     func refreshSipRegistration() {
         print("[CallManager] 刷新SIP注册")
         sipManager?.refreshRegistrations()
+    }
+    
+    // 添加模拟器特有的处理方法
+    #if targetEnvironment(simulator)
+    @objc private func handleSimulatedIncomingCall(_ notification: NSNotification) {
+        print("[CallManager] 收到模拟来电通知")
+        
+        guard let userInfo = notification.userInfo else {
+            print("[CallManager] 通知中没有用户信息")
+            return
+        }
+        
+        guard let caller = userInfo["caller"] as? String,
+              let number = userInfo["number"] as? String else {
+            print("[CallManager] 通知中缺少来电者信息")
+            return
+        }
+        
+        // 直接调用处理来电的方法
+        self.handleIncomingCall(caller: caller, number: number)
+    }
+    #endif
+    
+    // 其他必要的方法
+    func onCallFailed(reason: String) {
+        print("[CallManager] 通话失败: \(reason)")
+        DispatchQueue.main.async {
+            self.state = .failed
+            self.errorMessage = reason
+        }
+    }
+    
+    func onCallEstablished() {
+        print("[CallManager] 通话已建立")
+        DispatchQueue.main.async {
+            self.state = .connected
+        }
+    }
+    
+    func onCallEnded() {
+        print("[CallManager] 通话已结束")
+        DispatchQueue.main.async {
+            self.state = .ended
+        }
+    }
+    
+    // 清理当前通话状态
+    func clearCurrentCall() {
+        DispatchQueue.main.async {
+            self.state = .idle
+            self.currentCaller = ""
+            self.currentNumber = ""
+            self.errorMessage = ""
+        }
     }
 }
 
@@ -280,4 +298,50 @@ class IncomingCallHandler: SipManagerCallback {
     func onCallQualityChanged(quality: Float, message: String) {
         print("[IncomingCallHandler] 通话质量变更: \(quality) - \(message)")
     }
+}
+
+// CallManager 的回调处理类
+class CallManagerCallback: SipManagerCallback {
+    weak var manager: CallManager?
+    
+    init(manager: CallManager) {
+        self.manager = manager
+    }
+    
+    func onRegistrationSuccess() {}
+    func onRegistrationFailed(reason: String) {}
+    
+    func onIncomingCall(call: linphonesw.Call, caller: String) {
+        DispatchQueue.main.async {
+            // 从 call 对象中获取号码，或直接使用 caller
+            let number = call.remoteAddress?.username ?? caller
+            self.manager?.handleIncomingCall(caller: caller, number: number)
+        }
+    }
+    
+    func onCallFailed(reason: String) {
+        DispatchQueue.main.async {
+            self.manager?.onCallFailed(reason: reason)
+        }
+    }
+    
+    func onCallEstablished() {
+        DispatchQueue.main.async {
+            self.manager?.onCallEstablished()
+        }
+    }
+    
+    func onCallEnded() {
+        DispatchQueue.main.async {
+            self.manager?.onCallEnded()
+        }
+    }
+    
+    func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {}
+    func onCallQualityChanged(quality: Float, message: String) {}
+}
+
+// 添加通话状态枚举
+enum CallManagerState {
+    case idle, incoming, connecting, connected, ended, failed
 } 

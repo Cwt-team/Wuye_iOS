@@ -181,6 +181,12 @@ class SipManager: ObservableObject {
             // 设置日志级别
             config.setInt(section: "misc", key: "log_level", value: 3) // ORTP_MESSAGE
             print("已设置日志级别: 3 (ORTP_MESSAGE)")
+            
+            // 禁用模拟器音频
+            #if targetEnvironment(simulator)
+            config.setBool(section: "sound", key: "disable_audio_device", value: true)
+            print("已禁用模拟器音频设备")
+            #endif
         }
         
         // 启用静态音频包大小 - 改善音频质量
@@ -252,70 +258,44 @@ class SipManager: ObservableObject {
     
     // MARK: - Core Delegate Handlers
     
-    private func handleCallStateChanged(call: linphonesw.Call?, state: linphonesw.Call.State, message: String) {
-        // 在处理来电前记录更多日志
-        guard let call = call else {
-            print("[SIP-错误] 收到空的呼叫对象")
-            return
-        }
+    private func handleCallStateChanged(call: linphonesw.Call, state: linphonesw.Call.State, message: String) {
+        print("[SipManager] 通话状态改变: \(state), 消息: \(message)")
         
-        print("呼叫状态变更: \(state) (\(message))")
-        
-        switch state {
-        case .IncomingReceived, .PushIncomingReceived:
-            print("[SIP-详细] 收到来电状态变更，准备处理: 状态=\(state.rawValue), 远程地址=\(call.remoteAddressAsString ?? "未知")")
-            callState = .incoming
-            currentCall = call
-            preventSleepDuringCall(true)
-            
-            // 获取来电者信息
-            let caller = call.remoteAddressAsString ?? "未知来电"
-            
-            // 添加更多诊断信息
-            print("[SIP-详细] 回调对象存在检查: \(callback != nil)")
-            
-            // 安全地通知UI层显示来电界面
-            DispatchQueue.main.async { [weak self] in
-                self?.callback?.onIncomingCall(call: call, caller: caller)
-                print("[SIP-详细] 已通知回调处理来电: 回调对象存在=\(self?.callback != nil)")
-            }
-            
-        case .OutgoingInit:
-            callState = .outgoingInit
-            currentCall = call
-            preventSleepDuringCall(true)
-            
-        case .OutgoingRinging:
-            callState = .ringing
-            
-        case .Connected:
-            callState = .connected
-            callback?.onCallEstablished()
-            
-        case .StreamsRunning:
-            callState = .running
-            
-        case .Paused, .PausedByRemote:
-            callState = .paused
-            
-        case .Error:
-            callState = .error
-            callback?.onCallFailed(reason: message)
-            preventSleepDuringCall(false)
-            
-        case .End, .Released:
-            callState = state == .End ? .ended : .released
-            preventSleepDuringCall(false)
-            
-            if state == .End {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.callback?.onCallEnded()
-                    self.currentCall = nil
+        DispatchQueue.main.async {
+            switch state {
+            case .IncomingReceived:
+                self.currentCall = call
+                self.callState = .incoming
+                if let caller = call.remoteAddress?.username {
+                    // 通知回调
+                    self.callback?.onIncomingCall(call: call, caller: caller)
+                    
+                    // 不在这里显示来电界面，而是由 CallManager 负责
                 }
+            case .OutgoingInit:
+                self.callState = .outgoingInit
+            case .OutgoingRinging:
+                self.callState = .ringing
+            case .Connected:
+                self.callState = .connected
+                self.callback?.onCallEstablished()
+            case .StreamsRunning:
+                self.callState = .running
+            case .Paused:
+                self.callState = .paused
+            case .End:
+                self.callState = .ended
+                self.callback?.onCallEnded()
+            case .Released:
+                self.callState = .released
+                // 关闭来电界面
+                IncomingCallDisplayHelper.shared.dismissIncomingCall()
+            case .Error:
+                self.callState = .error
+                self.callback?.onCallFailed(reason: message)
+            default:
+                break
             }
-            
-        default:
-            break
         }
     }
     
@@ -400,7 +380,7 @@ class SipManager: ObservableObject {
                 username: username,
                 userid: username,
                 passwd: password,
-                ha1: "", 
+                ha1: "",
                 realm: "",
                 domain: domain)
             
@@ -578,253 +558,100 @@ class SipManager: ObservableObject {
 
     // 对外提供的音频准备方法
     func prepareAudioForCall() throws {
-        // 1. 确保AVAudioSession正确配置
-        try configureAudioSession()
+        print("[SipManager] 准备音频设备")
         
-        // 2. 重新加载Linphone音频设备
-        prepareAudioDevices()
+        #if targetEnvironment(simulator)
+        // 在模拟器中跳过音频设备初始化
+        print("[SipManager] 在模拟器中跳过音频配置")
+        return
+        #else
+        // 真机上的音频配置代码
+        let audioSession = AVAudioSession.sharedInstance()
         
-        // 3. 确保麦克风已启用
-        if let core = core, !core.micEnabled {
-            core.micEnabled = true
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            try audioSession.setActive(true)
+            print("[SipManager] 音频会话已配置")
+        } catch {
+            print("[SipManager] 配置音频会话时出错: \(error)")
+            throw error
+        }
+        
+        // 确保Linphone音频设备配置正确
+        if let core = self.core {
+            // 日志当前可用的音频设备
+            print("[SipManager] 当前可用音频设备: \(core.audioDevices.map { $0.deviceName })")
+            
+            // 设置音频设备
+            for device in core.audioDevices {
+                if device.type == .Speaker {
+                    print("[SipManager] 使用扬声器作为输出设备")
+                    core.outputAudioDevice = device
+                    break
+                }
+            }
+            
+            // 尝试找到并使用合适的音频输入设备
+            for device in core.audioDevices {
+                if device.type == .Microphone {
+                    print("[SipManager] 使用麦克风作为输入设备")
+                    core.inputAudioDevice = device
+                    break
+                }
+            }
+        }
+        #endif
+    }
+
+    // MARK: - Call Management
+
+    func acceptCall() {
+        print("[SipManager] 尝试接听电话")
+        
+        do {
+            // 检查当前通话状态
+            if callState != .incoming {
+                print("[SipManager] 错误: 尝试接听不是来电状态的通话，当前状态: \(callState)")
+                return
+            }
+            
+            // 如果 currentCall 为空，但状态是 incoming，尝试从 core 获取当前通话
+            if currentCall == nil, let core = self.core {
+                if let call = core.currentCall {
+                    print("[SipManager] 找到当前通话，正在尝试接听")
+                    currentCall = call
+                } else if let call = core.calls.first {
+                    print("[SipManager] 从通话列表中获取第一个通话，正在尝试接听")
+                    currentCall = call
+                } else {
+                    print("[SipManager] 错误: 尝试接听电话，但没有找到任何通话")
+                    return
+                }
+            }
+            
+            guard let currentCall = self.currentCall else {
+                print("[SipManager] 错误: 尝试接听电话，但没有当前通话")
+                return
+            }
+            
+            // 确保音频设备准备就绪
+            try prepareAudioForCall()
+            
+            print("[SipManager] 接听电话: \(currentCall)")
+            try currentCall.accept()
+            print("[SipManager] 电话已接听")
+            
+        } catch {
+            print("[SipManager] 接听电话时出错: \(error)")
+            // 通知调用者出现了错误
+            callback?.onCallFailed(reason: "接听电话时出错: \(error)")
         }
     }
 
-    // 配置音频会话
-    private func configureAudioSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        
-        print("[SIP] 开始配置音频会话...")
-        
-        // 先停止任何正在进行的会话
-        do {
-        try session.setActive(false, options: .notifyOthersOnDeactivation)
-            print("[SIP] 已停止现有音频会话")
-        } catch {
-            print("[SIP] 停止现有音频会话时出错: \(error)，将继续尝试配置新会话")
-        }
-        
-        #if targetEnvironment(simulator)
-        // 模拟器环境使用更简单的配置
-        do {
-            // 先使用最基础的配置
-            try session.setCategory(.ambient)
-            try session.setMode(.default)
-            print("[SIP] 已为模拟器环境设置简单音频配置")
-            
-            // 尝试激活会话
-            try session.setActive(true)
-            print("[SIP] 模拟器环境音频会话已激活")
-            
-            // 获取会话状态信息
-            print("[SIP] 音频会话信息: 采样率=\(session.sampleRate)Hz, 缓冲帧=\(session.inputLatency)")
-            return  // 成功配置后直接返回
-        } catch {
-            print("[SIP] 模拟器简单音频配置失败: \(error)，尝试其他方法")
-            // 不抛出错误，继续尝试下面的配置
-        }
-        #endif
-        
-        // 使用兼容性更好的音频会话参数
-        do {
-            #if targetEnvironment(simulator)
-            // 第二次尝试模拟器环境配置
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            print("[SIP] 已为模拟器环境设置备用音频配置")
-            #else
-            // 真机使用标准配置
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
-            print("[SIP] 已为真机环境设置标准音频配置")
-            #endif
-        } catch {
-            print("[SIP] 设置音频会话类别和模式失败: \(error)，尝试使用最简单配置")
-            
-            // 尝试最简单的配置
-            try session.setCategory(.playAndRecord)
-            print("[SIP] 已应用最简单音频配置")
-        }
-        
-        // 激活会话
-        do {
-        try session.setActive(true, options: [.notifyOthersOnDeactivation])
-            print("[SIP] 音频会话已配置并激活: 模式=\(session.mode.rawValue), 采样率=\(session.sampleRate)Hz")
-        } catch let error as NSError {
-            // 特别处理错误-66637 (kAudioUnitErr_CannotDoInCurrentContext)
-            if error.code == -66637 {
-                print("[SIP] 检测到特定错误-66637，正在尝试延迟重试")
-                
-                // 多次尝试激活
-                var attemptCount = 0
-                var lastError: Error? = error
-                
-                while attemptCount < 3 {
-                    Thread.sleep(forTimeInterval: 0.7)  // 增加等待时间
-                    attemptCount += 1
-                    
-                    do {
-                        try session.setActive(true, options: [.notifyOthersOnDeactivation])
-                        print("[SIP] 第\(attemptCount)次重试激活音频会话成功")
-                        return  // 成功激活则返回
-                    } catch let retryError {
-                        lastError = retryError
-                        print("[SIP] 第\(attemptCount)次重试失败: \(retryError)")
-                    }
-                }
-                
-                #if targetEnvironment(simulator)
-                // 在模拟器中即使失败也继续执行
-                print("[SIP] 模拟器环境中忽略音频会话激活错误，继续执行")
-                #else
-                // 在真机上抛出最后一个错误
-                print("[SIP] 多次尝试后仍无法激活音频会话")
-                if let lastError = lastError {
-                    throw lastError
-                }
-                #endif
-            } else {
-                print("[SIP] 激活音频会话失败，错误: \(error)")
-                
-                #if targetEnvironment(simulator)
-                // 在模拟器环境中忽略错误
-                print("[SIP] 模拟器环境中忽略音频会话错误，继续执行")
-                #else
-                throw error
-                #endif
-            }
-        }
-    }
-    
-    // 准备音频设备
-    private func prepareAudioDevices() {
-        guard let core = core else { 
-            print("[SIP] 无法准备音频设备：核心未初始化")
-            return 
-        }
-        
-        print("[SIP] 开始准备音频设备...")
-        
-        #if targetEnvironment(simulator)
-        // 针对模拟器的额外设置
-        core.audioJittcomp = 200      // 增加音频抖动补偿
-        core.echoCancellationEnabled = false  // 模拟器中禁用回声消除
-        linphone_core_set_use_rfc2833_for_dtmf(core.getCobject, 1)  // 使用带外DTMF
-        
-        // 设置音频特性
-        let config = core.config
-        linphone_config_set_int(config?.getCobject, "sound", "disable_audio_unit_start_failure", 1)
-        print("[SIP] 已为模拟器环境设置特殊音频参数")
-        #endif
-        
-        // 首先重新加载所有音频设备
-        core.reloadSoundDevices()
-        print("[SIP] 已重新加载音频设备")
-        
-        // 打印可用设备
-        var captureDevices: [String] = []
-        var playbackDevices: [String] = []
-        
-        for device in core.audioDevices {
-            if device.hasCapability(capability: AudioDeviceCapabilities.CapabilityRecord) {
-                captureDevices.append(device.id)
-            }
-            if device.hasCapability(capability: AudioDeviceCapabilities.CapabilityPlay) {
-                playbackDevices.append(device.id)
-            }
-        }
-        
-        print("[SIP] Linphone音频设备:")
-        print("[SIP] - 捕获设备: \(captureDevices.joined(separator: ", "))")
-        print("[SIP] - 播放设备: \(playbackDevices.joined(separator: ", "))")
-        
-        #if targetEnvironment(simulator)
-        // 在模拟器环境中，可能需要特殊处理
-        if captureDevices.isEmpty {
-            print("[SIP] 在模拟器中检测不到捕获设备，这是正常的")
-            
-            // 模拟器环境中设置一些虚拟设备
-            let config = core.config
-            linphone_config_set_string(config?.getCobject, "sound", "capture_dev", "")
-            linphone_config_set_string(config?.getCobject, "sound", "playback_dev", "")
-            
-            // 禁用音频错误检查
-            linphone_config_set_int(config?.getCobject, "sound", "disable_error_check", 1)
-        }
-        
-        // 设置更保守的音频参数
-        core.useFiles = true  // 在模拟器中使用文件而不是真实音频设备
-        print("[SIP] 在模拟器环境中已启用文件模式替代真实音频设备")
-        
-        // 禁用可能导致问题的功能
-        core.videoCaptureEnabled = false
-        core.videoDisplayEnabled = false
-        core.videoPreviewEnabled = false
-        
-        // 降低采样率以减少处理负担
-        linphone_config_set_int(config?.getCobject, "sound", "playback_ptime", 40)  // 增加播放包时间
-        linphone_config_set_int(config?.getCobject, "sound", "forced_sample_rate", 8000)  // 使用较低采样率
-        #else
-        // 在真机上，如果没有检测到捕获设备，可能需要额外处理
-        if captureDevices.isEmpty {
-            print("[SIP] 警告：未检测到任何捕获设备，请检查麦克风权限和硬件")
-        }
-        
-        // 配置音频处理参数
-        core.echoCancellationEnabled = true
-        core.adaptiveRateControlEnabled = true
-        #endif
-        
-        print("[SIP] 音频设备准备完成")
-    }
-    
-    // 接受呼叫
-    func acceptCall() {
-        guard let call = self.currentCall else {
-            print("[SIP] 没有活动呼叫可接受")
-            return
-        }
-        
-        do {
-            // 先配置音频
-            try prepareAudioForCall()
-            
-            // 创建通话参数
-            if let params = try call.currentParams?.copy() {
-                print("[SIP] 正在接受呼叫，参数配置: 音频=\(params.audioEnabled), 视频=\(params.videoEnabled)")
-                
-                // 直接使用C API调用，确保getCobject返回的不是nil
-                if let callPtr = call.getCobject, let paramsPtr = params.getCobject {
-                    let result = linphone_call_accept_with_params(callPtr, paramsPtr)
-                    if result == 0 {
-                        print("[SIP] 呼叫接受命令已发送")
-                    } else {
-                        print("[SIP] 呼叫接受失败，错误码：\(result)")
-                        throw LinphoneError.exception(result: "acceptWithParams returned value \(result)")
-                    }
-                } else {
-                    print("[SIP] 呼叫接受失败：内部对象为空")
-                    throw LinphoneError.exception(result: "Null pointer in call or params")
-                }
-            } else {
-                // 如果没有当前参数，使用简单的accept
-                try call.accept()
-                print("[SIP] 使用简单方式接受呼叫成功")
-            }
-        } catch {
-            print("[SIP] 接受呼叫错误: \(error)")
-            // 尝试回退到简单接听
-            do {
-                try call.accept()
-                print("[SIP] 使用简单方式接受呼叫成功")
-            } catch {
-                print("[SIP] 简单接受呼叫也失败: \(error)")
-            }
-        }
-    }
-    
     func terminateCall() {
-        guard let call = currentCall else { 
+        guard let call = currentCall else {
             print("[SIP] 终止呼叫: 没有活动呼叫")
-            return 
+            return
         }
         
         print("[SIP] 正在终止通话，当前状态: \(call.state.rawValue)")
@@ -901,9 +728,8 @@ class SipManager: ObservableObject {
         }
     }
 
-    func setSipCallback(_ delegate: SipManagerCallback) {
-        print("[SipManager] 设置回调处理器: \(delegate)")
-        self.callback = delegate
+    func setCallback(_ callback: SipManagerCallback) {
+        self.callback = callback
     }
 
     // MARK: - Public Methods
@@ -933,9 +759,9 @@ class SipManager: ObservableObject {
 
     func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
         AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            DispatchQueue.main.async { 
+            DispatchQueue.main.async {
                 print("麦克风权限状态: \(granted ? "已授权" : "已拒绝")")
-                completion(granted) 
+                completion(granted)
             }
         }
     }
@@ -1066,6 +892,72 @@ class SipManager: ObservableObject {
             }
         } else {
             print("[SipManager] 没有默认代理配置，无法刷新注册")
+        }
+    }
+
+    // 添加模拟器专用方法
+    #if targetEnvironment(simulator)
+    /// 模拟器环境中用于测试的模拟来电方法
+    public func simulateIncomingCall(from caller: String = "测试用户", number: String = "10086") {
+        print("[SipManager] 模拟器环境：模拟来电 from: \(caller) - \(number)")
+        
+        // 在模拟器中，我们直接通知CallManager创建一个来电通知
+        self.callState = .incoming
+        
+        // 通知其他组件有来电
+        NotificationCenter.default.post(
+            name: NSNotification.Name("SimulatedIncomingCall"),
+            object: nil,
+            userInfo: ["caller": caller, "number": number]
+        )
+        
+        print("[SipManager] 模拟器环境：已发送模拟来电通知")
+    }
+    #endif
+
+    // 添加方法以确保当前呼叫状态同步
+    private func syncCallState() {
+        if let core = core {
+            // 检查是否有当前通话
+            if currentCall == nil {
+                currentCall = core.currentCall
+            }
+            
+            // 更新通话状态
+            if let call = currentCall {
+                switch call.state {
+                case .IncomingReceived:
+                    callState = .incoming
+                case .OutgoingInit:
+                    callState = .outgoingInit
+                case .OutgoingRinging:
+                    callState = .ringing
+                case .Connected:
+                    callState = .connected
+                case .StreamsRunning:
+                    callState = .running
+                case .Paused:
+                    callState = .paused
+                case .End:
+                    callState = .ended
+                case .Released:
+                    callState = .released
+                    currentCall = nil
+                case .Error:
+                    callState = .error
+                default:
+                    break
+                }
+            } else {
+                callState = .idle
+            }
+        }
+    }
+
+    // 定期调用此方法来确保状态同步
+    private func startStateMonitor() {
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.syncCallState()
         }
     }
 }

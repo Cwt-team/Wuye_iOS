@@ -11,11 +11,11 @@ struct SipTestView: View {
     @State private var callTarget: String = UserDefaults.standard.string(forKey: "sipTarget") ?? "5000"
     @State private var transportType: String = UserDefaults.standard.string(forKey: "sipTransport") ?? "UDP"
     
-    @State private var status: String = "未注册"
-    @State private var callStatus: String = "空闲"
-    @State private var isRegistering: Bool = false
-    @State private var isCalling: Bool = false
-    @State private var isRegistered: Bool = false
+    @State var status: String = "未注册"
+    @State var callStatus: String = "空闲"
+    @State var isRegistering: Bool = false
+    @State var isCalling: Bool = false
+    @State var isRegistered: Bool = false
     @State private var isMuted: Bool = false
     @State private var isSpeakerOn: Bool = false
     @State private var logMessages: [String] = []
@@ -30,10 +30,11 @@ struct SipTestView: View {
     @State private var networkType: String = "未知"
     @State private var localIP: String = "未知"
     @State private var signalStrength: Int = 0
-    @State private var audioQuality: String = "未知"
+    @State var audioQuality: String = "未知"
     @State private var callLatency: String = "未知"
     
     @ObservedObject private var sipManager = SipManager.shared
+    private let callManager = CallManager.shared
     
     // 取消订阅存储
     @State private var cancellables = Set<AnyCancellable>()
@@ -264,8 +265,29 @@ struct SipTestView: View {
                 logMessages.removeAll()
                 addLog("SIP日志: 视图已加载，当前注册状态: \(sipManager.registrationState)")
                 
-                // 设置回调
-                setSipCallback()
+                // 添加来电通知观察者
+                NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name("IncomingCallNotification"),
+                    object: nil,
+                    queue: .main) { notification in
+                        if let userInfo = notification.userInfo,
+                           let caller = userInfo["caller"] as? String {
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(name: NSNotification.Name("UpdateCallStatusNotification"),
+                                                               object: "来电: \(caller)")
+                            }
+                        }
+                    }
+                
+                // 然后添加另一个观察者来处理状态更新
+                NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name("UpdateCallStatusNotification"),
+                    object: nil,
+                    queue: .main) { notification in
+                        if let statusText = notification.object as? String {
+                            self.updateCallStatus(statusText)
+                        }
+                    }
                 
                 // 更新状态
                 updateStatus()
@@ -278,6 +300,9 @@ struct SipTestView: View {
                 // 清理订阅
                 cancellables.forEach { $0.cancel() }
                 cancellables.removeAll()
+                
+                // 移除通知观察者
+                NotificationCenter.default.removeObserver(self)
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -584,111 +609,180 @@ struct SipTestView: View {
     }
     
     private func setSipCallback() {
-        sipManager.setSipCallback(SipCallbackHandler(
-            onRegistrationSuccess: {
-                DispatchQueue.main.async {
-                    isRegistering = false
-                    updateStatus()
-                    addLog("SIP日志: SIP注册已成功")
-                }
-            },
-            onRegistrationFailed: { reason in
-                DispatchQueue.main.async {
-                    isRegistering = false
-                    updateStatus()
-                    addLog("SIP日志: SIP注册失败: \(reason)")
-                }
-            },
-            onIncomingCall: { call, caller in
-                DispatchQueue.main.async {
-                    updateStatus()
-                    addLog("SIP日志: 收到来电: \(caller)")
-                }
-            },
-            onCallEstablished: {
-                DispatchQueue.main.async {
-                    updateStatus()
-                    addLog("SIP日志: 通话已建立")
-                }
-            },
-            onCallFailed: { reason in
-                DispatchQueue.main.async {
-                    updateStatus()
-                    addLog("SIP日志: 呼叫失败: \(reason)")
-                }
-            },
-            onCallEnded: {
-                DispatchQueue.main.async {
-                    updateStatus()
-                    addLog("SIP日志: 通话已结束")
-                }
+        // 不需要再调用 setupCallback，因为现在我们使用通知中心
+        // 直接确保通知观察者已设置
+        setupNotificationObservers()
+    }
+    
+    // 添加设置通知观察者的方法
+    private func setupNotificationObservers() {
+        let notifications = SipTestViewNotifications()
+        
+        NotificationCenter.default.addObserver(forName: notifications.registrationSuccess, object: nil, queue: .main) { _ in
+            self.updateStatus("已注册")
+            self.updateRegistrationState(isRegistered: true, isRegistering: false)
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.registrationFailed, object: nil, queue: .main) { notification in
+            if let reason = notification.object as? String {
+                self.updateStatus("注册失败: \(reason)")
+                self.updateRegistrationState(isRegistered: false, isRegistering: false)
             }
-        ))
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.callFailed, object: nil, queue: .main) { notification in
+            if let reason = notification.object as? String {
+                self.updateCallStatus("通话失败: \(reason)")
+                self.updateCallingState(false)
+            }
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.callEstablished, object: nil, queue: .main) { _ in
+            self.updateCallStatus("通话中")
+            self.updateCallingState(true)
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.callEnded, object: nil, queue: .main) { _ in
+            self.updateCallStatus("通话结束")
+            self.updateCallingState(false)
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.sipRegistrationStateChanged, object: nil, queue: .main) { notification in
+            if let userInfo = notification.userInfo,
+               let isSuccess = userInfo["isSuccess"] as? Bool,
+               let message = userInfo["message"] as? String {
+                self.updateStatus(isSuccess ? "已注册" : "注册失败: \(message)")
+                self.updateRegistrationState(isRegistered: isSuccess, isRegistering: false)
+            }
+        }
+        
+        NotificationCenter.default.addObserver(forName: notifications.callQualityChanged, object: nil, queue: .main) { notification in
+            if let userInfo = notification.userInfo,
+               let quality = userInfo["quality"] as? Float {
+                self.updateAudioQuality("\(Int(quality * 100))%")
+            }
+        }
+    }
+    
+    // 添加更新方法
+    func updateStatus(_ newStatus: String) {
+        status = newStatus
+    }
+    
+    func updateCallStatus(_ newStatus: String) {
+        callStatus = newStatus
+    }
+    
+    func updateRegistrationState(isRegistered: Bool, isRegistering: Bool) {
+        self.isRegistered = isRegistered
+        self.isRegistering = isRegistering
+    }
+    
+    func updateCallingState(_ isCalling: Bool) {
+        self.isCalling = isCalling
+    }
+    
+    func updateAudioQuality(_ quality: String) {
+        audioQuality = quality
     }
 }
 
-// 回调处理类
-class SipCallbackHandler: SipManagerCallback {
-    private let registrationSuccessHandler: () -> Void
-    private let registrationFailedHandler: (String) -> Void
-    private let incomingCallHandler: (linphonesw.Call, String) -> Void
-    private let callEstablishedHandler: () -> Void
-    private let callFailedHandler: (String) -> Void
-    private let callEndedHandler: () -> Void
+// 添加通知名称结构体
+struct SipTestViewNotifications {
+    let registrationSuccess = NSNotification.Name("SipRegistrationSuccessNotification")
+    let registrationFailed = NSNotification.Name("SipRegistrationFailedNotification")
+    let incomingCall = NSNotification.Name("SipIncomingCallNotification")
+    let callFailed = NSNotification.Name("SipCallFailedNotification")
+    let callEstablished = NSNotification.Name("SipCallEstablishedNotification")
+    let callEnded = NSNotification.Name("SipCallEndedNotification")
+    let sipRegistrationStateChanged = NSNotification.Name("SipRegistrationStateChangedNotification")
+    let callQualityChanged = NSNotification.Name("SipCallQualityChangedNotification")
+}
+
+// SipTestView的回调处理类
+class SipTestViewCallback: SipManagerCallback {
+    // 使用闭包处理回调
+    private let onRegistrationSuccessHandler: () -> Void
+    private let onRegistrationFailedHandler: (String) -> Void
+    private let onIncomingCallHandler: (linphonesw.Call, String) -> Void
+    private let onCallFailedHandler: (String) -> Void
+    private let onCallEstablishedHandler: () -> Void
+    private let onCallEndedHandler: () -> Void
+    private let onSipRegistrationStateChangedHandler: (Bool, String) -> Void
+    private let onCallQualityChangedHandler: (Float, String) -> Void
     
     init(
         onRegistrationSuccess: @escaping () -> Void,
         onRegistrationFailed: @escaping (String) -> Void,
         onIncomingCall: @escaping (linphonesw.Call, String) -> Void,
-        onCallEstablished: @escaping () -> Void,
         onCallFailed: @escaping (String) -> Void,
-        onCallEnded: @escaping () -> Void
+        onCallEstablished: @escaping () -> Void,
+        onCallEnded: @escaping () -> Void,
+        onSipRegistrationStateChanged: @escaping (Bool, String) -> Void,
+        onCallQualityChanged: @escaping (Float, String) -> Void
     ) {
-        self.registrationSuccessHandler = onRegistrationSuccess
-        self.registrationFailedHandler = onRegistrationFailed
-        self.incomingCallHandler = onIncomingCall
-        self.callEstablishedHandler = onCallEstablished
-        self.callFailedHandler = onCallFailed
-        self.callEndedHandler = onCallEnded
+        self.onRegistrationSuccessHandler = onRegistrationSuccess
+        self.onRegistrationFailedHandler = onRegistrationFailed
+        self.onIncomingCallHandler = onIncomingCall
+        self.onCallFailedHandler = onCallFailed
+        self.onCallEstablishedHandler = onCallEstablished
+        self.onCallEndedHandler = onCallEnded
+        self.onSipRegistrationStateChangedHandler = onSipRegistrationStateChanged
+        self.onCallQualityChangedHandler = onCallQualityChanged
     }
     
-    // 实现SipManagerCallback协议
     func onRegistrationSuccess() {
-        registrationSuccessHandler()
+        DispatchQueue.main.async {
+            self.onRegistrationSuccessHandler()
+        }
     }
     
     func onRegistrationFailed(reason: String) {
-        registrationFailedHandler(reason)
+        DispatchQueue.main.async {
+            self.onRegistrationFailedHandler(reason)
+        }
     }
     
     func onIncomingCall(call: linphonesw.Call, caller: String) {
-        incomingCallHandler(call, caller)
-    }
-    
-    func onCallEstablished() {
-        callEstablishedHandler()
+        DispatchQueue.main.async {
+            // 发送通知而不是直接回调
+            NotificationCenter.default.post(
+                name: NSNotification.Name("IncomingCallNotification"),
+                object: nil,
+                userInfo: ["caller": caller, "call": call]
+            )
+            self.onIncomingCallHandler(call, caller)
+        }
     }
     
     func onCallFailed(reason: String) {
-        callFailedHandler(reason)
+        DispatchQueue.main.async {
+            self.onCallFailedHandler(reason)
+        }
+    }
+    
+    func onCallEstablished() {
+        DispatchQueue.main.async {
+            self.onCallEstablishedHandler()
+        }
     }
     
     func onCallEnded() {
-        callEndedHandler()
+        DispatchQueue.main.async {
+            self.onCallEndedHandler()
+        }
     }
     
-    // 添加缺少的协议方法
     func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {
-        print("SIP注册状态: \(isSuccess ? "成功" : "失败") - \(message)")
-        if isSuccess {
-            registrationSuccessHandler()
-        } else {
-            registrationFailedHandler(message)
+        DispatchQueue.main.async {
+            self.onSipRegistrationStateChangedHandler(isSuccess, message)
         }
     }
     
     func onCallQualityChanged(quality: Float, message: String) {
-        print("通话质量变更: \(quality) - \(message)")
+        DispatchQueue.main.async {
+            self.onCallQualityChangedHandler(quality, message)
+        }
     }
 }
 

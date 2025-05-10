@@ -75,6 +75,6 @@ struct ActiveCallViewDetailed: View {
 struct ActiveCallViewDetailed_Previews: PreviewProvider {
     static var previews: some View {
         ActiveCallViewDetailed(callerName: "测试用户", callerNumber: "1001")
-            .environmentObject(CallManager())
+            .environmentObject(CallManager.shared)
     }
 } 

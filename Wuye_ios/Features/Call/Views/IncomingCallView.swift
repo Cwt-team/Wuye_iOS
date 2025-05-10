@@ -10,8 +10,9 @@ struct IncomingCallView: View {
     @State private var isRinging = true
     @State private var audioPlayer: AVAudioPlayer?
     
-    // 添加环境对象和状态变量
-    @EnvironmentObject private var callManager: CallManager
+    // 使用单例
+    private let callManager = CallManager.shared
+    
     @Environment(\.presentationMode) var presentationMode
     
     let callerName: String
@@ -83,8 +84,17 @@ struct IncomingCallView: View {
                     Button(action: {
                         stopRinging()
                         callAccepted = true
-                        sipManager.acceptCall() // 接听电话
-                        showCallView = true
+                        
+                        // 在主线程上执行，并添加延迟以确保音频设备准备就绪
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            // 尝试接听电话
+                            sipManager.acceptCall()
+                            
+                            // 短暂延迟后再显示通话界面，以确保通话已建立
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                showCallView = true
+                            }
+                        }
                     }) {
                         VStack {
                             Circle()
@@ -108,17 +118,17 @@ struct IncomingCallView: View {
             .padding()
         }
         .onAppear {
-            print("[IncomingCallView] 视图出现，设置铃声")
-            setupRingtone()
+            print("[IncomingCallView] 视图出现")
             startRinging()
         }
         .onDisappear {
+            print("[IncomingCallView] 视图消失")
             stopRinging()
             
             // 如果没有接听，且不是通过CallView离开的，则拒绝来电
             if !callAccepted && !showCallView {
                 sipManager.terminateCall()
-                callManager.clearIncomingCall()
+                CallManager.shared.clearIncomingCall()
             }
         }
         .fullScreenCover(isPresented: $showCallView) {
@@ -192,46 +202,18 @@ struct IncomingCallView: View {
     }
     
     private func startRinging() {
-        print("[IncomingCallView] 开始播放铃声")
-        
-        // 如果有配置好的音频播放器，使用它
-        if let player = audioPlayer, !player.isPlaying {
-            let playResult = player.play()
-            print("[IncomingCallView] 铃声播放结果: \(playResult ? "成功" : "失败")")
-        } else {
-            // 没有音频播放器，使用系统声音
-            print("[IncomingCallView] 使用系统声音作为铃声")
-            AudioServicesPlaySystemSound(1007)
-            
-            // 使用值类型捕获
-            let isPlayingState = self.isRinging
-            Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { timer in
-                if isPlayingState {
-                    AudioServicesPlaySystemSound(1007)
-                } else {
-                    timer.invalidate()
-                }
-            }
-        }
-            
-            // 设置震动
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.warning)
-            
-            // 持续震动效果
-        let isVibrating = self.isRinging
-            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { timer in
-            if isVibrating {
-                    generator.notificationOccurred(.warning)
-                } else {
-                    timer.invalidate()
-            }
-        }
+        #if !targetEnvironment(simulator)
+        // 只在真机上播放铃声
+        setupRingtone()
+        #else
+        // 在模拟器上只显示来电界面
+        print("[IncomingCallView] 模拟器环境，跳过铃声播放")
+        #endif
     }
     
     private func stopRinging() {
         isRinging = false
-        audioPlayer?.stop()
+        // 铃声停止由IncomingCallDisplayHelper处理
     }
 }
 

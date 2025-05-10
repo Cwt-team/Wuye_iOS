@@ -105,6 +105,21 @@ struct SIPSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                
+                // 测试功能
+                Section(header: Text("测试功能")) {
+                    Button("模拟来电") {
+                        IncomingCallDisplayHelper.shared.showIncomingCall(
+                            caller: "测试用户",
+                            number: "10086"
+                        )
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
             }
             .navigationTitle("SIP设置")
             .navigationBarItems(
@@ -115,6 +130,23 @@ struct SIPSettingsView: View {
             .onAppear(perform: loadSettings)
             .onChange(of: isRegistered) { newValue in
                 updateStatus()
+            }
+            .onAppear {
+                // 设置观察者
+                NotificationCenter.default.addObserver(forName: NSNotification.Name("SIPSettingsRegistrationSuccess"), object: nil, queue: .main) { _ in
+                    // 更新 UI
+                    self.updateRegistrationStatus(success: true)
+                }
+                
+                NotificationCenter.default.addObserver(forName: NSNotification.Name("SIPSettingsRegistrationFailed"), object: nil, queue: .main) { notification in
+                    if let reason = notification.object as? String {
+                        // 更新 UI
+                        self.updateRegistrationStatus(success: false, message: reason)
+                    }
+                }
+            }
+            .onDisappear {
+                NotificationCenter.default.removeObserver(self)
             }
             .alert(isPresented: $showingAlert) {
                 Alert(
@@ -176,7 +208,7 @@ struct SIPSettingsView: View {
             )
             
             // 配置注册回调
-            setupCallbacks()
+            setSipCallback()
             
             // 刷新注册
             SipManager.shared.refreshRegistrations()
@@ -190,8 +222,19 @@ struct SIPSettingsView: View {
     }
     
     // 设置SIP回调
-    private func setupCallbacks() {
-        SipManager.shared.setSipCallback(SipCallback())
+    private func setSipCallback() {
+        // 创建一个新的回调处理器，使用闭包而不是引用 self
+        let handler = SIPSettingsViewCallback(
+            onRegistrationSuccess: {
+                // 使用 NotificationCenter 或其他方式更新 UI
+                NotificationCenter.default.post(name: NSNotification.Name("SIPSettingsRegistrationSuccess"), object: nil)
+            },
+            onRegistrationFailed: { reason in
+                NotificationCenter.default.post(name: NSNotification.Name("SIPSettingsRegistrationFailed"), object: reason)
+            }
+        )
+        
+        SipManager.shared.setCallback(handler)
     }
     
     // 检查注册状态
@@ -246,56 +289,52 @@ struct SIPSettingsView: View {
         alertMessage = "正在测试呼叫: \(testNumber)"
         showingAlert = true
     }
+    
+    // 添加方法来更新注册状态
+    private func updateRegistrationStatus(success: Bool, message: String = "") {
+        // 更新 UI
+        // ...
+    }
 }
 
-// 用于SIP回调的类
-class SipCallback: SipManagerCallback {
-    // 移除非协议方法
-    // func onRegistrationStateChanged(state: RegState, message: String) {
-    //    print("SIP注册状态变更: \(state) - \(message)")
-    // }
+// 修改回调处理类，移除 weak 引用
+class SIPSettingsViewCallback: SipManagerCallback {
+    // 使用闭包而不是引用视图
+    private let onRegistrationSuccessHandler: () -> Void
+    private let onRegistrationFailedHandler: (String) -> Void
     
-    // func onCallStateChanged(state: linphonesw.Call.State, message: String) {
-    //    print("SIP呼叫状态变更: \(state) - \(message)")
-    // }
-    
-    func onIncomingCall(call: linphonesw.Call, caller: String) {
-        print("SIP来电: \(caller)")
+    init(onRegistrationSuccess: @escaping () -> Void = {},
+         onRegistrationFailed: @escaping (String) -> Void = {_ in}) {
+        self.onRegistrationSuccessHandler = onRegistrationSuccess
+        self.onRegistrationFailedHandler = onRegistrationFailed
     }
     
-    func onCallEstablished() {
-        print("SIP通话已建立")
-    }
-    
-    func onCallEnded() {
-        print("SIP通话已结束")
-    }
-    
+    // 实现协议方法
     func onRegistrationSuccess() {
-        print("SIP注册成功")
+        DispatchQueue.main.async {
+            self.onRegistrationSuccessHandler()
+        }
     }
     
     func onRegistrationFailed(reason: String) {
-        print("SIP注册失败: \(reason)")
+        DispatchQueue.main.async {
+            self.onRegistrationFailedHandler(reason)
+        }
     }
     
-    func onCallFailed(reason: String) {
-        print("SIP呼叫失败: \(reason)")
-    }
-    
-    func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {
-        print("SIP注册状态: \(isSuccess ? "成功" : "失败") - \(message)")
-    }
-    
-    func onCallQualityChanged(quality: Float, message: String) {
-        print("SIP通话质量变更: \(quality) - \(message)")
-    }
+    // 实现其他必要的回调方法
+    func onIncomingCall(call: linphonesw.Call, caller: String) {}
+    func onCallFailed(reason: String) {}
+    func onCallEstablished() {}
+    func onCallEnded() {}
+    func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {}
+    func onCallQualityChanged(quality: Float, message: String) {}
 }
 
 // 预览
 struct SIPSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SIPSettingsView()
-            .environmentObject(CallManager())
+            .environmentObject(CallManager.shared)
     }
-} 
+}

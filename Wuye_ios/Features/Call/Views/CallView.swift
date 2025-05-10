@@ -18,10 +18,32 @@ struct CallView: View {
     // UI状态
     @State private var isHangupConfirmationPresented = false
     
+    // 添加状态变量
+    @State private var shouldDismiss = false
+    
     init(callerName: String, callerNumber: String, isIncoming: Bool = false) {
         self.callerName = callerName
         self.callerNumber = callerNumber
         self.isIncoming = isIncoming
+        
+        // 创建并设置回调，但不捕获self
+        setupCallbackOnInit()
+    }
+    
+    // 在初始化时静态设置回调
+    private func setupCallbackOnInit() {
+        let handler = CallViewCallback(
+            onCallFailed: {
+                // 不能在这里访问self
+                // 我们将在回调中使用通知中心或其他方式通知视图
+                NotificationCenter.default.post(name: NSNotification.Name("CallFailedNotification"), object: nil)
+            },
+            onCallEnded: {
+                NotificationCenter.default.post(name: NSNotification.Name("CallEndedNotification"), object: nil)
+            }
+        )
+        
+        SipManager.shared.setCallback(handler)
     }
     
     var body: some View {
@@ -130,13 +152,31 @@ struct CallView: View {
         }
         .onAppear {
             setupCallHandling()
+            
+            // 添加通知观察者
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("CallFailedNotification"), object: nil, queue: .main) { _ in
+                self.shouldDismiss = true
+            }
+            
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("CallEndedNotification"), object: nil, queue: .main) { _ in
+                self.shouldDismiss = true
+            }
         }
         .onDisappear {
+            // 移除通知观察者
+            NotificationCenter.default.removeObserver(self)
+            
             callTimer?.invalidate()
             callTimer = nil
+            sipManager.terminateCall()
         }
         .onChange(of: sipManager.callState) { newState in
             updateCallStatus()
+        }
+        .onChange(of: shouldDismiss) { newValue in
+            if newValue {
+                presentationMode.wrappedValue.dismiss()
+            }
         }
         .alert(isPresented: $isHangupConfirmationPresented) {
             Alert(
@@ -154,14 +194,6 @@ struct CallView: View {
     // MARK: - 辅助方法
     
     private func setupCallHandling() {
-        // 设置SIP回调
-        sipManager.setSipCallback(CallbackHandler(callView: self))
-        
-        // 如果是拨出电话，自动拨打
-        if !isIncoming {
-            sipManager.call(recipient: callerNumber)
-        }
-        
         // 立即更新状态
         updateCallStatus()
         
@@ -251,60 +283,10 @@ struct CallView: View {
         }
     }
     
-    // MARK: - 内部类
-    
-    // SIP回调处理器
-    private class CallbackHandler: SipManagerCallback {
-        var callView: CallView?
-        
-        init(callView: CallView) {
-            self.callView = callView
-        }
-        
-        func onRegistrationSuccess() {
-            print("SIP注册成功")
-        }
-        
-        func onRegistrationFailed(reason: String) {
-            print("SIP注册失败: \(reason)")
-        }
-        
-        func onIncomingCall(call: linphonesw.Call, caller: String) {
-            print("收到来电: \(caller)")
-        }
-        
-        func onCallFailed(reason: String) {
-            print("通话失败: \(reason)")
-            DispatchQueue.main.async {
-                self.callView?.setErrorState(reason)
-            }
-        }
-        
-        func onCallEstablished() {
-            print("通话已建立")
-            DispatchQueue.main.async {
-                self.callView?.updateConnectionState(true)
-            }
-        }
-        
-        func onCallEnded() {
-            print("通话已结束")
-            DispatchQueue.main.async {
-                self.callView?.callStatus = "通话已结束"
-                // 延迟关闭界面
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.callView?.presentationMode.wrappedValue.dismiss()
-                }
-            }
-        }
-        
-        func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {
-            print("SIP注册状态: \(isSuccess ? "成功" : "失败") - \(message)")
-        }
-        
-        func onCallQualityChanged(quality: Float, message: String) {
-            print("通话质量变更: \(quality) - \(message)")
-        }
+    // 添加结束通话方法
+    private func endCall() {
+        sipManager.terminateCall()
+        shouldDismiss = true
     }
 }
 
@@ -372,4 +354,33 @@ struct CallView_Previews: PreviewProvider {
                 .previewDisplayName("拨出")
         }
     }
-} 
+}
+
+// SIP回调处理器
+class CallViewCallback: SipManagerCallback {
+    private let onCallFailedAction: () -> Void
+    private let onCallEndedAction: () -> Void
+    
+    init(onCallFailed: @escaping () -> Void, onCallEnded: @escaping () -> Void) {
+        self.onCallFailedAction = onCallFailed
+        self.onCallEndedAction = onCallEnded
+    }
+    
+    // 实现所有回调方法
+    func onRegistrationSuccess() {}
+    func onRegistrationFailed(reason: String) {}
+    func onIncomingCall(call: linphonesw.Call, caller: String) {}
+    
+    func onCallFailed(reason: String) {
+        self.onCallFailedAction()
+    }
+    
+    func onCallEstablished() {}
+    
+    func onCallEnded() {
+        self.onCallEndedAction()
+    }
+    
+    func onSipRegistrationStateChanged(isSuccess: Bool, message: String) {}
+    func onCallQualityChanged(quality: Float, message: String) {}
+}
