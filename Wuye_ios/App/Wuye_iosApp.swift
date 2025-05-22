@@ -33,7 +33,7 @@ struct Wuye_iosApp: App {
     @StateObject private var authManager = AuthManager.shared
     
     // 使用延迟初始化，确保CallManager在适当的时机创建
-    @StateObject private var callManager = CallManager.shared
+    @StateObject private var callManager = CallManager()
     
     // 存储自定义会话，以便在app的整个生命周期中使用
     static let customSession: Session = {

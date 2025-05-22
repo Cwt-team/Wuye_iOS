@@ -46,6 +46,6 @@ struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
             .environmentObject(AuthManager.shared)
-            .environmentObject(CallManager.shared)
+            .environmentObject(CallManager())
     }
 }

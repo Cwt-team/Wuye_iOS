@@ -11,14 +11,11 @@ import SwiftUI
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // 应用启动时的初始化代码
-        print("� 应用程序已启动")
-        
-        // 初始化SipManager
-        _ = SipManager.shared
+        print("📱 应用程序已启动")
         
         #if DEBUG
         // 开发环境下的额外设置
-        print("�️ 运行在开发环境")
+        print("🛠️ 运行在开发环境")
         #endif
         
         return true
@@ -33,7 +30,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
         // 当用户丢弃场景时调用
-        print("�️ 场景已被丢弃")
+        print("🗑️ 场景已被丢弃")
     }
 }
 

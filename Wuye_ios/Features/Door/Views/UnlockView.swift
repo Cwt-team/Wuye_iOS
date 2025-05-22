@@ -7,39 +7,34 @@ struct UnlockView: View {
     @State private var doors: [Door] = []
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if doors.isEmpty {
-                    ContentUnavailableView(
-                        "暂无门禁",
-                        systemImage: "lock.slash.fill",
-                        description: Text("您目前没有可以开启的门禁")
-                    )
-                } else {
-                    List {
-                        Section(header: Text("我的门禁")) {
-                            ForEach(doors, id: \.id) { door in
-                                DoorListItem(door: door)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        selectedDoor = door
-                                        isShowingDoorDetail = true
-                                    }
-                            }
-                        }
-                    }
-                    .listStyle(InsetGroupedListStyle())
+        Group {
+            if #available(iOS 17.0, *) {
+                ContentUnavailableView("暂无内容", systemImage: "lock", description: Text("请稍后重试"))
+            } else {
+                // iOS 16 及以下自定义占位视图
+                VStack(spacing: 12) {
+                    Image(systemName: "lock")
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray)
+                    Text("暂无内容")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                    Text("请稍后重试")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemGroupedBackground))
             }
-            .navigationTitle("门禁开锁")
-            .sheet(isPresented: $isShowingDoorDetail) {
-                if let door = selectedDoor {
-                    DoorDetailView(door: door)
-                }
+        }
+        .navigationTitle("门禁开锁")
+        .sheet(isPresented: $isShowingDoorDetail) {
+            if let door = selectedDoor {
+                DoorDetailView(door: door)
             }
-            .onAppear {
-                loadDoors()
-            }
+        }
+        .onAppear {
+            loadDoors()
         }
     }
     

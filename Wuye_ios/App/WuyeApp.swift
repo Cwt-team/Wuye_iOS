@@ -19,7 +19,7 @@ struct WuyeApp: App {
                 MainTabView()
                     .environmentObject(authManager)
             } else {
-                NewLoginView()
+                LoginView()
                     .environmentObject(authManager)
             }
         }

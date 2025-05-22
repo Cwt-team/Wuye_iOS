@@ -1,7 +1,6 @@
 import Foundation
 import Combine
-import Alamofire
-
+import Network
 
 // MARK: - 认证响应模型（AuthManager内部使用）
 private struct AuthManagerLoginResponse: Codable {
@@ -29,6 +28,14 @@ enum AuthStatus {
     case verifying
 }
 
+// MARK: - 认证错误
+enum AuthError: Error {
+    case invalidURL
+    case networkError(Error)
+    case invalidResponse
+    case decodingError(Error)
+}
+
 // MARK: - 认证管理器
 class AuthManager: ObservableObject {
     // 单例实例
@@ -41,9 +48,15 @@ class AuthManager: ObservableObject {
     
     // 私有属性
     private let keychainHelper = KeychainHelper.shared
-    private let apiService = APIService.shared
     private var cancellables = Set<AnyCancellable>()
     private let userRepository: UserRepositoryProtocol
+    
+    // API配置
+    private let serverIP = "8.138.26.199"  // 服务器IP地址
+    private let serverPort = "5000"        // 服务器端口
+    private var baseURL: String {
+        return "http://\(serverIP):\(serverPort)"
+    }
     
     // 计算属性
     var isAuthenticated: Bool {
@@ -59,436 +72,242 @@ class AuthManager: ObservableObject {
     
     /// 检查当前认证状态
     func checkAuthStatus() {
-        // 设置状态为正在验证
         status = .verifying
         
-        // 检查是否存在有效的令牌
-        if let token = keychainHelper.get(service: "auth", account: "token") {
-            // 尝试获取当前用户
-            userRepository.getCurrentUser()
-                .receive(on: DispatchQueue.main) // 确保在主线程上接收结果
-                .sink(
-                    receiveCompletion: { [weak self] completion in
-                        if case .failure = completion {
-                            self?.logout()
-                        }
-                    },
-                    receiveValue: { [weak self] user in
-                        if let user = user {
-                            self?.currentUser = user
-                            self?.status = .authenticated
-                            self?.isLoggedIn = true
-                        } else {
-                            self?.validateToken(token)
-                        }
-                    }
-                )
-                .store(in: &cancellables)
-        } else {
-            // 无令牌，设置为未认证状态
-            status = .unauthenticated
-            isLoggedIn = false
+        guard let token = keychainHelper.get(service: "auth", account: "token") else {
+            setUnauthenticatedState()
+            return
         }
-    }
-    
-    /// 使用密码登录 - 连接到后台管理系统API
-    /// - Parameters:
-    ///   - phone: 手机号/用户名
-    ///   - password: 密码
-    ///   - completion: 完成回调
-    func loginWithPassword(phone: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        #if DEBUG
-        print("🔑 尝试登录: \(phone)")
-        print("🌐 请求URL: \(APIService.shared.currentBaseURL)/mobile/login")
-        let startTime = Date()
-        #endif
         
-        // 注意：endpoint不要以/api开头，因为APIService的currentBaseURL已经包含了/api
-        // 后端路由是/api/mobile/login，但在这里只需要写/mobile/login
-        apiService.simpleRequest(
-            endpoint: "/mobile/login",
-            method: "POST",
-            body: ["account": phone, "password": password],  // 使用account作为参数名
-            useFormData: true,  // 使用表单数据格式
-            requiresAuth: false
-        ) { [weak self] (result: Result<Models.AdminLoginResponse, Error>) in
-            #if DEBUG
-            let requestDuration = Date().timeIntervalSince(startTime)
-            print("⏱️ 登录请求耗时: \(String(format: "%.2f", requestDuration))秒")
-            #endif
-            
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    #if DEBUG
-                    print("✅ 收到登录响应: success=\(response.success)")
-                    if let message = response.message {
-                        print("📝 响应消息: \(message)")
+        userRepository.getCurrentUser()
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    if case .failure = completion {
+                        self?.logout()
                     }
-                    if let ownerInfo = response.ownerInfo {
-                        print("👤 用户信息: id=\(ownerInfo.id), username=\(ownerInfo.username)")
+                },
+                receiveValue: { [weak self] user in
+                    if let user = user {
+                        self?.setAuthenticatedState(user: user)
                     } else {
-                        print("⚠️ 响应中无用户信息")
+                        self?.setUnauthenticatedState()
                     }
-                    #endif
-                    
-                    if response.success {
-                        guard let ownerInfo = response.ownerInfo else {
-                            completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "登录成功但未返回用户信息"])))
-                            return
-                        }
-                        
-                        #if DEBUG
-                        print("🎉 登录成功: \(phone)")
-                        #endif
-                        
-                        // 构建用户对象
-                        let user = User(
-                            id: ownerInfo.id,
-                            username: ownerInfo.username,
-                            password: "",  // 不存储密码
-                            phone: ownerInfo.phone,
-                            email: ownerInfo.email ?? "",
-                            address: ownerInfo.address ?? "",
-                            avatarURL: nil,
-                            community: nil
-                        )
-                        
-                        // 从响应获取token，如果响应没有提供token则生成一个临时token
-                        // 在实际项目中，服务器应该返回一个真实的认证token
-                        // 这里我们使用message字段作为token，如果没有则创建一个临时token
-                        let token = response.message ?? UUID().uuidString
-                        
-                        #if DEBUG
-                        print("🔑 保存令牌: \(String(token.prefix(5)))...")
-                        #endif
-                        
-                        // 保存令牌
-                        self?.keychainHelper.save(token, service: "auth", account: "token")
-                        
-                        // 保存用户信息
-                        self?.userRepository.saveUser(user: user)
-                            .receive(on: DispatchQueue.main)
-                            .sink(
-                                receiveCompletion: { (completion: Subscribers.Completion<Error>) in
-                                    if case .failure(let error) = completion {
-                                        #if DEBUG
-                                        print("❌ 保存用户信息失败: \(error.localizedDescription)")
-                                        #endif
-                                    }
-                                },
-                                receiveValue: { [weak self] savedUser in
-                                    #if DEBUG
-                                    print("✅ 保存用户信息成功，ID: \(savedUser.id)")
-                                    #endif
-                                    
-                                    self?.currentUser = savedUser
-                                    self?.status = .authenticated
-                                    self?.isLoggedIn = true
-                                    completion(.success(()))
-                                }
-                            )
-                            .store(in: &self!.cancellables)
-                    } else {
-                        let errorMessage = response.message ?? "登录失败"
-                        #if DEBUG
-                        print("❌ 登录失败: \(errorMessage)")
-                        #endif
-                        completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMessage])))
-                    }
-                case .failure(let error):
-                    self?.status = .unauthenticated
-                    self?.isLoggedIn = false
-                    #if DEBUG
-                    print("❌ 登录请求失败: \(error.localizedDescription)")
-                    
-                    // 尝试提供更详细的错误信息
-                    if let urlError = error as? URLError {
-                        print("   🔍 URL错误码: \(urlError.code.rawValue)")
-                        switch urlError.code {
-                        case .timedOut:
-                            print("   ⏰ 请求超时 - 检查服务器是否正在运行，或网络连接是否稳定")
-                        case .cannotConnectToHost:
-                            print("   🔌 无法连接到主机 - 检查服务器地址是否正确")
-                        case .notConnectedToInternet:
-                            print("   📡 设备未连接到互联网 - 检查网络连接")
-                        default:
-                            print("   🧩 其他URL错误: \(urlError.localizedDescription)")
-                        }
-                    } else if let afError = error as? AFError {
-                        print("   🔍 Alamofire错误: \(afError)")
-                        if let underlyingError = afError.underlyingError {
-                            print("   🔍 底层错误: \(underlyingError)")
-                        }
-                    } else {
-                        print("   🔍 一般错误: \(error)")
-                    }
-                    
-                    print("   🔧 建议: 检查服务器是否运行在正确的地址和端口(192.168.1.21:5000)上")
-                    #endif
-                    completion(.failure(error))
                 }
-            }
-        }
-    }
-    
-    /// 使用手机号和验证码登录
-    /// - Parameters:
-    ///   - phone: 手机号
-    ///   - code: 验证码
-    ///   - completion: 完成回调
-    func login(phone: String, code: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        apiService.request(
-            endpoint: "/auth/login",
-            method: HTTPMethod.post,
-            parameters: ["phone": phone, "code": code],
-            requiresAuth: false
-        ) { [weak self] (result: Result<Models.UserResponse, APIError>) in
-            DispatchQueue.main.async { // 确保在主线程上处理结果
-                switch result {
-                case .success(let response):
-                    if response.success, let token = response.message {
-                        // 保存令牌
-                        self?.keychainHelper.save(token, service: "auth", account: "token")
-                        
-                        // 保存用户信息
-                        self?.userRepository.saveUser(user: response.user)
-                            .receive(on: DispatchQueue.main) // 确保在主线程上接收结果
-                            .sink(
-                                receiveCompletion: { (completion: Subscribers.Completion<Error>) in
-                                    if case .failure(let error) = completion {
-                                        print("保存用户信息失败: \(error.localizedDescription)")
-                                    }
-                                },
-                                receiveValue: { [weak self] user in
-                                    self?.currentUser = user
-                                    self?.status = .authenticated
-                                    self?.isLoggedIn = true
-                                    completion(.success(()))
-                                }
-                            )
-                            .store(in: &self!.cancellables)
-                    } else {
-                        self?.status = .unauthenticated
-                        self?.isLoggedIn = false
-                        completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: response.message ?? "登录失败"])))
-                    }
-                    
-                case .failure(let error):
-                    self?.status = .unauthenticated
-                    self?.isLoggedIn = false
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-    
-    /// 使用手机号、密码和用户信息注册
-    /// - Parameters:
-    ///   - phone: 手机号
-    ///   - password: 密码
-    ///   - username: 用户名
-    ///   - completion: 完成回调
-    func register(phone: String, password: String, username: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        apiService.request(
-            endpoint: "/auth/register",
-            method: HTTPMethod.post,
-            parameters: [
-                "phone": phone,
-                "password": password,
-                "username": username
-            ],
-            requiresAuth: false
-        ) { [weak self] (result: Result<Models.UserResponse, APIError>) in
-            DispatchQueue.main.async { // 确保在主线程上处理结果
-                switch result {
-                case .success(let response):
-                    if response.success, let token = response.message {
-                        // 保存令牌
-                        self?.keychainHelper.save(token, service: "auth", account: "token")
-                        
-                        // 保存用户信息
-                        self?.userRepository.saveUser(user: response.user)
-                            .receive(on: DispatchQueue.main) // 确保在主线程上接收结果
-                            .sink(
-                                receiveCompletion: { (completion: Subscribers.Completion<Error>) in
-                                    if case .failure(let error) = completion {
-                                        print("保存用户信息失败: \(error.localizedDescription)")
-                                    }
-                                },
-                                receiveValue: { [weak self] user in
-                                    self?.currentUser = user
-                                    self?.status = .authenticated
-                                    self?.isLoggedIn = true
-                                    completion(.success(()))
-                                }
-                            )
-                            .store(in: &self!.cancellables)
-                    } else {
-                        self?.status = .unauthenticated
-                        self?.isLoggedIn = false
-                        completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: response.message ?? "注册失败"])))
-                    }
-                case .failure(let error):
-                    self?.status = .unauthenticated
-                    self?.isLoggedIn = false
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-    
-    /// 退出登录
-    func logout() {
-        // 清理当前用户和认证状态
-        currentUser = nil
-        status = .unauthenticated
-        isLoggedIn = false
-        
-        // 移除令牌
-        keychainHelper.delete(service: "auth", account: "token")
-        
-        // 重置本地数据
-        userRepository.deleteCurrentUser()
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            )
             .store(in: &cancellables)
     }
     
-    /// 请求验证码
-    /// - Parameters:
-    ///   - phone: 手机号
-    ///   - completion: 完成回调
-    func requestLoginCode(phone: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        apiService.request(
-            endpoint: "/auth/request-code",
-            method: HTTPMethod.post,
-            parameters: ["phone": phone],
-            requiresAuth: false
-        ) { (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
+    /// 登出
+    func logout() {
+        keychainHelper.delete(service: "auth", account: "token")
+        setUnauthenticatedState()
     }
     
-    /// 验证令牌
-    /// - Parameter token: 令牌字符串
-    private func validateToken(_ token: String) {
-        apiService.request(
-            endpoint: "/auth/validate-token",
-            method: HTTPMethod.get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<User, APIError>) in
-            switch result {
-            case .success(let user):
-                self?.userRepository.saveUser(user: user)
-                    .sink(
-                        receiveCompletion: { (completion: Subscribers.Completion<Error>) in
-                            if case .failure(let error) = completion {
-                                print("保存用户信息失败: \(error.localizedDescription)")
-                                self?.logout()
-                            }
-                        },
-                        receiveValue: { [weak self] user in
-                            self?.currentUser = user
-                            self?.status = .authenticated
-                            self?.isLoggedIn = true
-                        }
-                    )
-                    .store(in: &self!.cancellables)
-                
-            case .failure:
-                self?.logout()
-            }
-        }
-    }
-    
-    /// 管理员登录 - 使用手机号和密码登录到管理系统
-    /// - Parameters:
-    ///   - phone: 手机号/用户名
-    ///   - password: 密码
-    ///   - completion: 完成回调
-    func adminLogin(phone: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    /// 账号密码登录
+    func loginWithPassword(phone_number: String, password: String, completion: @escaping (Bool) -> Void) {
+        // 配置服务器地址
         #if DEBUG
-        print("尝试管理员登录: \(phone)")
+        let serverConfig = (
+            ip: "8.138.26.199",
+            port: "5000",
+            scheme: "http"
+        )
+        #else
+        let serverConfig = (
+            ip: "your.production.server",
+            port: "443",
+            scheme: "https"
+        )
         #endif
         
-        // 调用服务器端管理员登录API
-        apiService.simpleRequest(
-            endpoint: "/mobile/login",
-            method: "POST",
-            body: ["account": phone, "password": password],  // 使用account作为参数名
-            useFormData: true,  // 使用表单数据格式
-            requiresAuth: false
-        ) { [weak self] (result: Result<Models.AdminLoginResponse, Error>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    if response.success {
-                        guard let ownerInfo = response.ownerInfo else {
-                            completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "登录成功但未返回用户信息"])))
-                            return
-                        }
-                        
-                        #if DEBUG
-                        print("管理员登录成功: \(phone)")
-                        #endif
-                        
-                        // 构建用户对象
-                        let user = User(from: ownerInfo)
-                        
-                        // 从响应获取token，如果响应没有提供token则生成一个临时token
-                        let token = response.message ?? UUID().uuidString
-                        
-                        // 保存令牌
-                        self?.keychainHelper.save(token, service: "auth", account: "token")
-                        
-                        // 保存用户信息
-                        self?.userRepository.saveUser(user: user)
-                            .receive(on: DispatchQueue.main)
-                            .sink(
-                                receiveCompletion: { (completion: Subscribers.Completion<Error>) in
-                                    if case .failure(let error) = completion {
-                                        print("保存用户信息失败: \(error.localizedDescription)")
-                                    }
-                                },
-                                receiveValue: { [weak self] savedUser in
-                                    self?.currentUser = savedUser
-                                    self?.status = .authenticated
-                                    self?.isLoggedIn = true
-                                    completion(.success(()))
-                                }
-                            )
-                            .store(in: &self!.cancellables)
-                    } else {
-                        let errorMessage = response.message ?? "登录失败"
-                        #if DEBUG
-                        print("管理员登录失败: \(errorMessage)")
-                        #endif
-                        completion(.failure(NSError(domain: "AuthManager", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMessage])))
+        let baseURL = "\(serverConfig.scheme)://\(serverConfig.ip):\(serverConfig.port)"
+        
+        guard let url = URL(string: "\(baseURL)/api/mobile/login") else {
+            print("[AuthManager] 无效的URL")
+            completion(false)
+            return
+        }
+        
+        // 配置请求
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+        
+        // 设置请求头
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        
+        // 构建请求体
+        let bodyString = "phone_number=\(phone_number)&password=\(password)"
+        request.httpBody = bodyString.data(using: .utf8)
+        
+        // 配置URLSession
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 10
+        config.waitsForConnectivity = true
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.connectionProxyDictionary = [:]  // 禁用代理
+        
+        // 检查网络连接
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "NetworkMonitor")
+        
+        monitor.pathUpdateHandler = { [weak self] path in
+            if path.status == .satisfied {
+                print("[AuthManager] 网络连接正常")
+                // 网络正常，执行请求
+                self?.executeRequest(
+                    request: request,
+                    config: config,
+                    baseURL: baseURL,
+                    password: password,
+                    completion: completion
+                )
+            } else {
+                print("[AuthManager] 网络连接不可用")
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+            }
+            monitor.cancel()
+        }
+        
+        monitor.start(queue: queue)
+    }
+    
+    // MARK: - 私有方法
+    
+    private func executeRequest(
+        request: URLRequest,
+        config: URLSessionConfiguration,
+        baseURL: String,
+        password: String,
+        completion: @escaping (Bool) -> Void,
+        attempt: Int = 1,
+        maxAttempts: Int = 3
+    ) {
+        print("[AuthManager] 尝试登录 (第 \(attempt) 次，共 \(maxAttempts) 次)")
+        print("[AuthManager] 正在连接服务器: \(baseURL)")
+        
+        let session = URLSession(configuration: config)
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                print("[AuthManager] 网络错误: \(error.localizedDescription)")
+                
+                if let urlError = error as? URLError {
+                    switch urlError.code {
+                    case .timedOut:
+                        print("[AuthManager] 连接超时，请检查网络连接和服务器地址")
+                    case .cannotConnectToHost:
+                        print("[AuthManager] 无法连接到服务器，请确认服务器是否在运行")
+                    case .networkConnectionLost:
+                        print("[AuthManager] 网络连接断开")
+                    default:
+                        print("[AuthManager] 网络错误代码: \(urlError.code)")
                     }
-                case .failure(let error):
+                    
+                    // 如果还有重试机会，则重试
+                    if attempt < maxAttempts {
+                        print("[AuthManager] 2秒后重试...")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            self?.executeRequest(
+                                request: request,
+                                config: config,
+                                baseURL: baseURL,
+                                password: password,
+                                completion: completion,
+                                attempt: attempt + 1,
+                                maxAttempts: maxAttempts
+                            )
+                        }
+                        return
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+                return
+            }
+            
+            // 检查HTTP响应
+            if let httpResponse = response as? HTTPURLResponse {
+                print("[AuthManager] HTTP状态码: \(httpResponse.statusCode)")
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    print("[AuthManager] 服务器错误: \(httpResponse.statusCode)")
+                    DispatchQueue.main.async {
+                        completion(false)
+                    }
+                    return
+                }
+            }
+            
+            guard let data = data else {
+                print("[AuthManager] 未收到数据")
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+                return
+            }
+            
+            // 打印响应数据用于调试
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[AuthManager] 服务器响应: \(responseString)")
+            }
+            
+            do {
+                let response = try JSONDecoder().decode(LoginResponse.self, from: data)
+                DispatchQueue.main.async {
+                    if response.success, let info = response.ownerInfo {
+                        let user = User(
+                            id: Int64(info.id) ?? 0,
+                            username: info.account,
+                            password: password,
+                            phone: info.phoneNumber,
+                            email: "",
+                            address: ""
+                        )
+                        self?.currentUser = user
+                        self?.status = .authenticated
+                        self?.isLoggedIn = true
+                        print("[AuthManager] 登录成功")
+                        completion(true)
+                    } else {
+                        print("[AuthManager] 登录失败: \(response.message ?? "未知错误")")
+                        self?.status = .unauthenticated
+                        self?.isLoggedIn = false
+                        completion(false)
+                    }
+                }
+            } catch {
+                print("[AuthManager] 数据解析错误: \(error)")
+                DispatchQueue.main.async {
                     self?.status = .unauthenticated
                     self?.isLoggedIn = false
-                    #if DEBUG
-                    print("管理员登录请求失败: \(error.localizedDescription)")
-                    #endif
-                    completion(.failure(error))
+                    completion(false)
                 }
             }
         }
+        task.resume()
     }
     
-    /// 验证码登录 - 使用手机号和验证码登录
-    /// - Parameters:
-    ///   - phone: 手机号
-    ///   - code: 验证码
-    ///   - completion: 完成回调
-    func verifyAndLogin(phone: String, code: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        // 使用之前的login方法实现
-        login(phone: phone, code: code, completion: completion)
+    // MARK: - 私有辅助方法
+    
+    private func setAuthenticatedState(user: User) {
+        currentUser = user
+        status = .authenticated
+        isLoggedIn = true
+    }
+    
+    private func setUnauthenticatedState() {
+        status = .unauthenticated
+        currentUser = nil
+        isLoggedIn = false
     }
 }
+

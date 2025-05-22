@@ -91,7 +91,7 @@ class APIService {
     private let baseURL = "https://api.wuye-app.com/api" // 正式环境地址
     private let debugURL = "https://dev-api.wuye-app.com/api" // 开发环境地址
     private let localURL = "http://127.0.0.1:5000/api" // 本地开发地址，改为5000端口
-    private let networkLocalURL = "http://127.0.0.1:5000/api" // 局域网IP地址改为本地IP地址
+    private let networkLocalURL = "http://192.168.1.13:5000/api" // 局域网IP地址改为本地IP地址
     
     // 调试配置
     #if DEBUG
@@ -116,20 +116,20 @@ class APIService {
     
     // 当前环境
     #if DEBUG
-    var currentBaseURL: String { 
+    var currentBaseURL: String {
         let useLocal = UserDefaults.standard.bool(forKey: "UseLocalServer")
         let useNetworkLocal = UserDefaults.standard.bool(forKey: "UseNetworkLocalServer")
         
         if useLocal {
             if useNetworkLocal {
-                print("🖥️ 使用局域网开发服务器: \(networkLocalURL)")
+                print("�️ 使用局域网开发服务器: \(networkLocalURL)")
                 return networkLocalURL
             } else {
-                print("🖥️ 使用本地开发服务器: \(localURL)")
+                print("�️ 使用本地开发服务器: \(localURL)")
                 return localURL
             }
         } else {
-            print("🌐 使用开发环境服务器: \(debugURL)")
+            print("� 使用开发环境服务器: \(debugURL)")
             return debugURL
         }
     }
@@ -144,11 +144,11 @@ class APIService {
     
     // MARK: - 请求日志相关方法
     private func printRequestDivider() {
-        print("\n——————————— 🚀 API REQUEST ———————————")
+        print("\n——————————— � API REQUEST ———————————")
     }
     
     private func printResponseDivider() {
-        print("——————————— 🏁 API RESPONSE ——————————\n")
+        print("——————————— � API RESPONSE ——————————\n")
     }
     
     // 修改logResponseData方法，明确Encodable约束
@@ -158,11 +158,11 @@ class APIService {
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(data)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print("📥 响应数据:")
+                print("� 响应数据:")
                 print(jsonString)
             }
         } catch {
-            print("📥 响应数据: (无法序列化)")
+            print("� 响应数据: (无法序列化)")
         }
     }
     
@@ -171,20 +171,20 @@ class APIService {
         if let json = try? JSONSerialization.jsonObject(with: data, options: []),
            let jsonData = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📥 响应数据:")
+            print("� 响应数据:")
             print(jsonString)
         } else if let str = String(data: data, encoding: .utf8) {
-            print("📥 响应文本:")
+            print("� 响应文本:")
             print(str)
         } else {
-            print("📥 响应数据: (无法解析的二进制数据)")
+            print("� 响应数据: (无法解析的二进制数据)")
         }
     }
     
     private func logNetworkError(_ error: Error) {
         if let afError = error.asAFError {
             // 记录Alamofire错误
-            print("🔍 Alamofire错误类型: \(type(of: afError))")
+            print("� Alamofire错误类型: \(type(of: afError))")
             
             if let urlError = afError.underlyingError as? URLError {
                 print("   底层URL错误: \(urlError.localizedDescription)")
@@ -239,7 +239,7 @@ class APIService {
             }
         } else {
             // 记录其他错误
-            print("🔍 错误类型: \(type(of: error))")
+            print("� 错误类型: \(type(of: error))")
             print("   描述: \(error.localizedDescription)")
             
             // 检查是否是SwiftUI线程发布错误
@@ -295,19 +295,19 @@ class APIService {
         #if DEBUG
         if enableDetailedLogs {
             printRequestDivider()
-            print("📡 API请求: \(method.rawValue) \(urlString)")
+            print("� API请求: \(method.rawValue) \(urlString)")
             
             if logRequestHeaders && !requestHeaders.isEmpty {
-                print("📋 请求头:")
+                print("� 请求头:")
                 requestHeaders.forEach { header in
-                    let value = header.name.lowercased() == "authorization" ? 
+                    let value = header.name.lowercased() == "authorization" ?
                                 "Bearer ********" : header.value
                     print("   \(header.name): \(value)")
                 }
             }
             
             if logRequestBody, let params = parameters, !params.isEmpty {
-                print("📦 请求参数:")
+                print("� 请求参数:")
                 do {
                     let jsonData = try JSONSerialization.data(withJSONObject: params, options: .prettyPrinted)
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -354,7 +354,7 @@ class APIService {
                             if let encodableData = data as? Encodable {
                                 self.logResponseData(encodableData)
                             } else {
-                                print("📥 响应数据: (无法序列化，类型不符合Encodable协议)")
+                                print("� 响应数据: (无法序列化，类型不符合Encodable协议)")
                             }
                         }
                         #endif
@@ -461,7 +461,7 @@ class APIService {
                         #if DEBUG
                         if self.enableDetailedLogs && self.logErrors {
                             if let urlError = error as? URLError {
-                                if urlError.code == .secureConnectionFailed || 
+                                if urlError.code == .secureConnectionFailed ||
                                    urlError.code.rawValue == -1200 {  // -1200 是常见的SSL错误代码
                                     print("   SSL连接错误，可能是证书问题")
                                 }
@@ -786,13 +786,13 @@ class APIService {
         #if DEBUG
         if enableDetailedLogs {
             printRequestDivider()
-            print("📤 上传文件: \(urlString)")
-            print("📎 文件路径: \(fileURL.path)")
-            print("📄 文件名: \(fileName ?? fileURL.lastPathComponent)")
-            print("🔠 MIME类型: \(mimeType)")
+            print("� 上传文件: \(urlString)")
+            print("� 文件路径: \(fileURL.path)")
+            print("� 文件名: \(fileName ?? fileURL.lastPathComponent)")
+            print("� MIME类型: \(mimeType)")
             
             if !parameters.isEmpty {
-                print("📦 附加参数:")
+                print("� 附加参数:")
                 parameters.forEach { key, value in
                     print("   \(key): \(value)")
                 }
@@ -907,7 +907,7 @@ final class _APIEventMonitor: EventMonitor {
         // 修复：Request没有isUploadRequest成员的问题
         if let uploadRequest = request as? UploadRequest {
             // 上传请求特殊处理
-            print("📤 开始上传请求: \(requestDescription)")
+            print("� 开始上传请求: \(requestDescription)")
         }
     }
     
@@ -919,11 +919,11 @@ final class _APIEventMonitor: EventMonitor {
         if let metrics = request.metrics {
             // 可以在这里添加详细的网络性能指标记录
             if let taskInterval = metrics.taskInterval {
-                print("🔄 请求完成: \(String(format: "%.4f", taskInterval.duration))秒")
+                print("� 请求完成: \(String(format: "%.4f", taskInterval.duration))秒")
             }
             
             // 添加传输指标记录
-            print("📊 网络传输指标: \(metrics.transactionMetrics.count)项")
+            print("� 网络传输指标: \(metrics.transactionMetrics.count)项")
             
             // 显示请求开始和结束时间
             if let firstTransaction = metrics.transactionMetrics.first,
@@ -937,7 +937,7 @@ final class _APIEventMonitor: EventMonitor {
                 
                 // 打印网络协议信息
                 if let networkProtocol = firstTransaction.networkProtocolName {
-                    print("🌐 网络协议: \(networkProtocol)")
+                    print("� 网络协议: \(networkProtocol)")
                 }
             }
         }
@@ -946,9 +946,19 @@ final class _APIEventMonitor: EventMonitor {
     func request<Value>(_ request: DataRequest, didParseResponse response: DataResponse<Value, AFError>) {
         // 请求解析响应
         if let statusCode = response.response?.statusCode {
-            print("📊 HTTP状态码: \(statusCode)")
+            print("� HTTP状态码: \(statusCode)")
         }
     }
 }
 #endif
 */
+
+extension URLSession {
+    static var configuredSession: URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 300
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }
+}

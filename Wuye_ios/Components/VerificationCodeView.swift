@@ -72,7 +72,7 @@ struct VerificationCodeView: View {
                 .focused($isFocused)
                 .keyboardType(.numberPad)
                 #if swift(>=5.9)
-                .onChange(of: code) { oldValue, newValue in
+                .onChange(of: code) { newValue in
                     processCodeChange(newValue)
                 }
                 #else

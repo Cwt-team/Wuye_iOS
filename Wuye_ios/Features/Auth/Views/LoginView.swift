@@ -10,16 +10,10 @@ struct LoginView: View {
     @State private var password = ""
     
     // 错误处理和状态
-    @State private var errorMessage: String?
+    @State private var errorMessage: String = ""
     @State private var usernameError: String?
     @State private var passwordError: String?
     @State private var isLoading = false
-    
-    // API测试
-    @State private var isTestingAPI = false
-    @State private var showAPITestResult = false
-    @State private var apiTestResult = ""
-    @State private var apiTestSuccess = false
     
     // 主题
     @Environment(\.colorScheme) var colorScheme
@@ -63,7 +57,7 @@ struct LoginView: View {
     // 执行登录
     private func login() {
         // 清除之前的错误
-        errorMessage = nil
+        errorMessage = ""
         
         // 验证表单
         let isUsernameValid = validateUsername()
@@ -76,50 +70,22 @@ struct LoginView: View {
         // 显示加载状态
         isLoading = true
         
-        // 调用登录API
-        authManager.loginWithPassword(phone: username, password: password) { result in
-            // 隐藏加载状态
-            isLoading = false
-            
-            switch result {
-            case .success(_):
-                print("登录成功: \(username)")
-                // 登录成功，AuthManager会自动更新isAuthenticated状态
-            case .failure(let error):
-                // 登录失败，显示错误信息
-                errorMessage = error.localizedDescription
-                print("登录失败: \(error.localizedDescription)")
+        // 调用后端登录API
+        authManager.loginWithPassword(
+            phone_number: username,
+            password: password,
+            completion: { success in
+                DispatchQueue.main.async { // 保证UI状态在主线程更新
+                    isLoading = false
+                    if success {
+                        errorMessage = ""
+                        authManager.isLoggedIn = true // 再次确保状态同步
+                    } else {
+                        errorMessage = "用户名或密码错误"
+                    }
+                }
             }
-        }
-    }
-    
-    // 测试API连接
-    private func testAPIConnection() {
-        isTestingAPI = true
-        
-        // 使用APIService测试ping接口
-        let apiService = APIService.shared
-        // 注意：endpoint不要以/api开头，因为APIService的currentBaseURL已经包含了/api
-        // 后端路由是/api/ping，但在这里只需要写/ping
-        apiService.simpleRequest(
-            endpoint: "/ping",
-            method: "GET",
-            requiresAuth: false
-        ) { (result: Result<Any, Error>) in
-            isTestingAPI = false
-            showAPITestResult = true
-            
-            switch result {
-            case .success(_):
-                apiTestSuccess = true
-                apiTestResult = "API连接成功！可以正常访问服务器。"
-                print("API连接测试成功")
-            case .failure(let error):
-                apiTestSuccess = false
-                apiTestResult = "API连接失败：\(error.localizedDescription)"
-                print("API连接测试失败: \(error)")
-            }
-        }
+        )
     }
     
     var body: some View {
@@ -190,7 +156,7 @@ struct LoginView: View {
                 .padding(.horizontal)
                 
                 // 错误信息显示
-                if let errorMessage = errorMessage {
+                if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.subheadline)
                         .foregroundColor(.red)
@@ -237,34 +203,10 @@ struct LoginView: View {
                     Spacer()
                 }
                 
-                // API连接测试按钮
-                Button(action: testAPIConnection) {
-                    if isTestingAPI {
-                        HStack {
-                            Text("测试中...")
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                                .scaleEffect(0.7)
-                        }
-                    } else {
-                        Text("测试API连接")
-                    }
-                }
-                .disabled(isTestingAPI)
-                .font(.caption)
-                .padding(.top, 30)
-                
-                Spacer()
+        
             }
             .padding(.bottom)
             .navigationBarHidden(true)
-            .alert(isPresented: $showAPITestResult) {
-                Alert(
-                    title: Text(apiTestSuccess ? "测试成功" : "测试失败"),
-                    message: Text(apiTestResult),
-                    dismissButton: .default(Text("确定"))
-                )
-            }
         }
     }
 }
