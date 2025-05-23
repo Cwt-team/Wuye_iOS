@@ -89,125 +89,127 @@ struct LoginView: View {
     }
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // 标题
-                Text("物业管理系统")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .padding(.top, 40)
-                
-                // 登录表单
-                VStack(spacing: 15) {
-                    // 测试账号提示
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("测试账号：")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        
-                        Text("手机号: 13800001001")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        
-                        Text("密码: pwd123")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                    .padding(.bottom, 10)
-                    .padding(.horizontal, 5)
+        ZStack { // 使用 ZStack 作为根容器，允许背景和内容叠加
+            // 背景层
+            Color(UIColor.systemBackground) // 使用系统背景色，自动适应深色/浅色模式
+                .ignoresSafeArea() // 确保背景延伸到安全区域外
+            
+            // 内容层
+            ScrollView { // 使用 ScrollView 确保在小屏幕设备上也能看到所有内容
+                VStack(spacing: 20) {
+                    // 标题
+                    Text("物业管理系统")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .padding(.top, 60) // 增加顶部间距
                     
-                    // 用户名输入框
-                    VStack(alignment: .leading, spacing: 5) {
-                        TextField("请输入手机号", text: $username)
-                            .padding()
-                            .background(colorScheme == .dark ? Color.black.opacity(0.2) : Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                            .onChange(of: username) { _ in
-                                usernameError = nil
-                            }
-                            .keyboardType(.phonePad)  // 使用数字键盘
-                        
-                        if let error = usernameError {
-                            Text(error)
+                    // 登录表单
+                    VStack(spacing: 15) {
+                        // 测试账号提示
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("测试账号：")
                                 .font(.caption)
-                                .foregroundColor(.red)
-                                .padding(.leading, 4)
+                                .foregroundColor(.gray)
+                            
+                            Text("手机号: 13800001001")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                            
+                            Text("密码: pwd123")
+                                .font(.caption)
+                                .foregroundColor(.blue)
                         }
+                        .padding(.bottom, 10)
+                        .padding(.horizontal, 5)
+                        
+                        // 用户名输入框
+                        VStack(alignment: .leading, spacing: 5) {
+                            TextField("请输入手机号", text: $username)
+                                .padding()
+                                .background(Color(UIColor.secondarySystemBackground))
+                                .cornerRadius(8)
+                                .onChange(of: username) { _ in
+                                    usernameError = nil
+                                }
+                                .keyboardType(.phonePad)
+                            
+                            if let error = usernameError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.leading, 4)
+                            }
+                        }
+                        
+                        // 密码输入框
+                        VStack(alignment: .leading, spacing: 5) {
+                            SecureField("密码", text: $password)
+                                .padding()
+                                .background(Color(UIColor.secondarySystemBackground))
+                                .cornerRadius(8)
+                                .onChange(of: password) { _ in
+                                    passwordError = nil
+                                }
+                            
+                            if let error = passwordError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.leading, 4)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20) // 增加水平间距
+                    
+                    // 错误信息显示
+                    if !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundColor(.red)
+                            .padding(.top, 5)
+                            .multilineTextAlignment(.center)
                     }
                     
-                    // 密码输入框
-                    VStack(alignment: .leading, spacing: 5) {
-                        SecureField("密码", text: $password)
-                            .padding()
-                            .background(colorScheme == .dark ? Color.black.opacity(0.2) : Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                            .onChange(of: password) { _ in
-                                passwordError = nil
+                    // 登录按钮
+                    Button(action: login) {
+                        if isLoading {
+                            HStack {
+                                Text("登录中...")
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             }
-                        
-                        if let error = passwordError {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                                .padding(.leading, 4)
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                
-                // 错误信息显示
-                if !errorMessage.isEmpty {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.red)
-                        .padding(.top, 5)
-                        .multilineTextAlignment(.center)
-                }
-                
-                // 登录按钮
-                Button(action: login) {
-                    if isLoading {
-                        HStack {
-                            Text("登录中...")
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue.opacity(0.8))
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                    } else {
-                        Text("登录")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            .background(Color.blue.opacity(0.8))
                             .foregroundColor(.white)
                             .cornerRadius(8)
+                        } else {
+                            Text("登录")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                        }
                     }
-                }
-                .disabled(isLoading)
-                .padding(.horizontal)
-                .padding(.top, 10)
-                
-                // 注册链接
-                HStack {
-                    Spacer()
+                    .disabled(isLoading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    
+                    // 注册链接
                     Button("还没有账号？点击注册") {
-                        // 跳转到注册页面的逻辑
                         print("跳转到注册页面")
                     }
                     .font(.subheadline)
                     .foregroundColor(.blue)
                     .padding(.top, 10)
-                    Spacer()
+                    
+                    Spacer(minLength: 0) // 确保内容居中
                 }
-                
-        
+                .padding(.vertical, 20)
             }
-            .padding(.bottom)
-            .navigationBarHidden(true)
         }
+        .navigationBarHidden(true) // 隐藏导航栏
     }
 }
 

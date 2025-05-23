@@ -106,20 +106,7 @@ struct SIPSettingsView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                // 测试功能
-                Section(header: Text("测试功能")) {
-                    Button("模拟来电") {
-                        IncomingCallDisplayHelper.shared.showIncomingCall(
-                            caller: "测试用户",
-                            number: "10086"
-                        )
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                }
+             
             }
             .navigationTitle("SIP设置")
             .navigationBarItems(

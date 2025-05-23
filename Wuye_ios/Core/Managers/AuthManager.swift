@@ -142,7 +142,7 @@ class AuthManager: ObservableObject {
         request.setValue("keep-alive", forHTTPHeaderField: "Connection")
         
         // 构建请求体
-        let bodyString = "phone_number=\(phone_number)&password=\(password)"
+        let bodyString = "username=\(phone_number)&password=\(password)"
         request.httpBody = bodyString.data(using: .utf8)
         
         // 配置URLSession

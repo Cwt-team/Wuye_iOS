@@ -88,9 +88,6 @@ struct ProfileView: View {
                     secondaryButton: .cancel(Text("取消"))
                 )
             }
-            .sheet(isPresented: $showAPITest) {
-                APITestView()
-            }
         }
     }
 }

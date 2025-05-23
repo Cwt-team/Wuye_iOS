@@ -1,10 +1,3 @@
-//
-//  Wuye_iosApp.swift
-//  Wuye_ios
-//
-//  Created by CUI King on 2025/4/23.
-//
-
 import SwiftUI
 import Alamofire
 import AVFoundation
@@ -33,7 +26,7 @@ struct Wuye_iosApp: App {
     @StateObject private var authManager = AuthManager.shared
     
     // 使用延迟初始化，确保CallManager在适当的时机创建
-    @StateObject private var callManager = CallManager()
+    @StateObject private var callManager = CallManager.shared
     
     // 存储自定义会话，以便在app的整个生命周期中使用
     static let customSession: Session = {
@@ -76,7 +69,7 @@ struct Wuye_iosApp: App {
     init() {
         // 应用程序初始化设置
         #if DEBUG
-        print("🚀 应用程序启动中...")
+        print("� 应用程序启动中...")
         // 设置默认使用本地服务器（方便开发测试）
         UserDefaults.standard.set(true, forKey: "UseLocalServer")
         // 设置使用局域网IP地址
@@ -92,16 +85,19 @@ struct Wuye_iosApp: App {
         #if targetEnvironment(simulator)
         print("⚠️ 在模拟器环境中运行，某些功能（如音频）可能受限")
         #endif
+
+        // 合并 UI 外观配置
+        configureAppearance()
+        // 合并 SIP 管理器初始化
+        configureSipManager()
     }
     
     var body: some Scene {
         WindowGroup {
-            // Wrap 一个 NavigationView，保证 LoginView 里的 NavigationLink 能正常工作
-            NavigationView {
-                LaunchView()
-            }
-            .environmentObject(authManager)
-            .environmentObject(callManager)
+            LaunchView()
+                .environmentObject(authManager)
+                .environmentObject(callManager)
+                .ignoresSafeArea()
         }
     }
     
@@ -121,15 +117,44 @@ struct Wuye_iosApp: App {
         
         // 打印提示信息
         #if DEBUG
-        print("🔧 已完成网络代理配置检查，确保使用正确端口 (5000)")
+        print("� 已完成网络代理配置检查，确保使用正确端口 (5000)")
         #endif
     }
     
     /// 配置SSL证书信任
     private static func configureSSLTrust() {
         #if DEBUG
-        print("🔐 配置SSL证书信任...")
+        print("� 配置SSL证书信任...")
         print("✅ 已创建定制会话: timeoutInterval=60s, 已配置SSL证书信任策略")
         #endif
+    }
+
+    // MARK: - UI外观配置
+    private func configureAppearance() {
+        UINavigationBar.appearance().backgroundColor = .systemBackground
+        UINavigationBar.appearance().tintColor = .systemBlue
+        UITabBar.appearance().backgroundColor = .systemBackground
+    }
+
+    // MARK: - SIP管理器初始化
+    private func configureSipManager() {
+        let defaults = UserDefaults.standard
+        let sipServer = defaults.string(forKey: "sipServer") ?? "sip.wuyeapp.com"
+        let sipPort = defaults.string(forKey: "sipPort") ?? "5060"
+        let sipUsername = defaults.string(forKey: "sipUsername") ?? ""
+        let sipPassword = defaults.string(forKey: "sipPassword") ?? ""
+
+        if !sipUsername.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                SipManager.shared.configureSipAccount(
+                    username: sipUsername,
+                    password: sipPassword,
+                    domain: sipServer,
+                    port: sipPort,
+                    transport: "UDP"
+                )
+            }
+        }
+        print("SIP管理器初始化完成")
     }
 }
