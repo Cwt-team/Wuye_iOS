@@ -40,6 +40,8 @@
 		FDEF1E072DDC56E400C76A45 /* Exceptions for "Wuye_ios" folder in "Wuye_ios" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Core/Network/APIEventMonitor.swift,
+				Features/Auth/Views/VerificationCodeView.swift,
 				SupportingFiles/Info.plist,
 			);
 			target = FD6E49F32DB8C50400C834DA /* Wuye_ios */;
