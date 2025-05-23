@@ -4,8 +4,7 @@ struct HomeView: View {
     @EnvironmentObject var authManager: AuthManager
     
     var body: some View {
-        ZStack {
-            Color.white.ignoresSafeArea() // 彻底全屏白底
+        NavigationView {
             VStack(spacing: 0) {
                 // 1. 用户信息区
                 Home.HeaderView()
@@ -27,14 +26,14 @@ struct HomeView: View {
                         Home.LifeServiceView()
                     }
                     .padding(.top, 8)
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .onAppear {
-            print("HomeView appeared - User: \(authManager.currentUser?.username ?? "Unknown")")
+            .background(Color.white)
+            .navigationBarHidden(true)
+            .accentColor(.purple)
+            .onAppear {
+                print("HomeView appeared - User: \(authManager.currentUser?.username ?? "Unknown")")
+            }
         }
     }
 }

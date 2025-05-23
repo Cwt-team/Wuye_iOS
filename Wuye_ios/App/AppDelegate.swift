@@ -1,3 +1,10 @@
+//
+//  AppDelegate.swift
+//  Wuye_ios
+//
+//  Created by CUI King on 2025/4/28.
+//
+
 import UIKit
 import SwiftUI
 

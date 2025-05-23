@@ -10,22 +10,38 @@ struct LaunchView: View {
     private let viewId = UUID().uuidString.prefix(6)
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                if authManager.isAuthenticated {
-                    ContentView()
-                        .environmentObject(authManager)
-                        .environmentObject(callManager)
-                } else {
-                    LoginView()
-                        .environmentObject(authManager)
-                        .environmentObject(callManager)
-                }
+        Group {
+            if authManager.isAuthenticated {
+                ContentView()
+                    .environmentObject(authManager)
+                    .environmentObject(callManager)
+            } else {
+                LoginView()
+                    .environmentObject(authManager)
+                    .environmentObject(callManager)
+                    .overlay(
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Button(action: {
+                                    showAPITest.toggle()
+                                }) {
+                                    Image(systemName: "network")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.blue)
+                                        .padding(12)
+                                        .background(Color(.systemBackground).opacity(0.8))
+                                        .clipShape(Circle())
+                                        .shadow(radius: 2)
+                                }
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 20)
+                            }
+                        }
+                    )
             }
-            .navigationBarHidden(true)
-            .ignoresSafeArea()
         }
-        .navigationViewStyle(.stack)
         .onAppear {
             print("[LaunchView-\(viewId)] 视图出现")
             authManager.checkAuthStatus()
@@ -75,8 +91,8 @@ struct LaunchView: View {
         
         // 响应来电通知
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("IncomingCallReceived"),
-            object: nil,
+            forName: NSNotification.Name("IncomingCallReceived"), 
+            object: nil, 
             queue: .main
         ) { notification in
             print("[LaunchView-\(viewId)] 收到来电通知，准备显示来电界面")
@@ -99,8 +115,8 @@ struct LaunchView: View {
         
         // 响应来电结束通知
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("IncomingCallEnded"),
-            object: nil,
+            forName: NSNotification.Name("IncomingCallEnded"), 
+            object: nil, 
             queue: .main
         ) { _ in
             print("[LaunchView-\(viewId)] 收到来电结束通知，准备关闭来电界面")
