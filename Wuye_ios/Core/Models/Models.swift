@@ -1,6 +1,35 @@
 import Foundation
 import GRDB
 
+// ========== BaseModel 协议与扩展（由 BaseModel.swift 迁移而来） ==========
+
+/// 数据库模型基础协议
+protocol BaseModel: Codable, FetchableRecord, PersistableRecord {
+    /// 同步状态 (synced/pending/deleted)
+    var syncStatus: String? { get set }
+}
+
+/// 基础模型的默认实现
+extension BaseModel {
+    func markAsCreated() {
+        var model = self
+        model.syncStatus = "created"
+    }
+    
+    func markAsUpdated() {
+        var model = self
+        model.syncStatus = "updated"
+    }
+    
+    func markAsDeleted() {
+        var model = self
+        model.syncStatus = "deleted"
+    }
+}
+
+/// GRDB的列名辅助类型
+extension GRDB.Column { }
+
 // MARK: - 物业模型
 struct Property: Codable, FetchableRecord, PersistableRecord {
     // 基本信息
@@ -27,8 +56,8 @@ struct Property: Codable, FetchableRecord, PersistableRecord {
     }
     
     // 初始化方法
-    init(id: Int64? = nil, name: String, address: String, userId: Int64, 
-         createdAt: Date = Date(), updatedAt: Date = Date(), 
+    init(id: Int64? = nil, name: String, address: String, userId: Int64,
+         createdAt: Date = Date(), updatedAt: Date = Date(),
          syncStatus: String = "synced") {
         self.id = id
         self.name = name
@@ -84,9 +113,9 @@ struct Door: Codable, FetchableRecord, PersistableRecord {
     }
     
     // 初始化方法
-    init(id: Int64? = nil, propertyId: Int64, name: String, 
-         doorCode: String, doorType: String = "main", 
-         isActive: Bool = true, createdAt: Date = Date(), 
+    init(id: Int64? = nil, propertyId: Int64, name: String,
+         doorCode: String, doorType: String = "main",
+         isActive: Bool = true, createdAt: Date = Date(),
          updatedAt: Date = Date(), syncStatus: String = "synced") {
         self.id = id
         self.propertyId = propertyId
@@ -145,9 +174,9 @@ struct UnlockRecord: Codable, FetchableRecord, PersistableRecord {
     }
     
     // 初始化方法
-    init(id: Int64? = nil, doorId: Int64, userId: Int64, 
-         unlockTime: Date = Date(), unlockMethod: String = "app", 
-         isSuccess: Bool = true, createdAt: Date = Date(), 
+    init(id: Int64? = nil, doorId: Int64, userId: Int64,
+         unlockTime: Date = Date(), unlockMethod: String = "app",
+         isSuccess: Bool = true, createdAt: Date = Date(),
          updatedAt: Date = Date(), syncStatus: String = "synced") {
         self.id = id
         self.doorId = doorId
@@ -209,10 +238,10 @@ struct WorkOrder: Codable, FetchableRecord, PersistableRecord {
     }
     
     // 初始化方法
-    init(id: Int64? = nil, userId: Int64, propertyId: Int64, 
-         title: String, description: String, type: String = "repair", 
-         status: String = "pending", assignedTo: Int64? = nil, 
-         imageURLs: [String]? = nil, createdAt: Date = Date(), 
+    init(id: Int64? = nil, userId: Int64, propertyId: Int64,
+         title: String, description: String, type: String = "repair",
+         status: String = "pending", assignedTo: Int64? = nil,
+         imageURLs: [String]? = nil, createdAt: Date = Date(),
          updatedAt: Date = Date(), syncStatus: String = "synced") {
         self.id = id
         self.userId = userId
@@ -280,11 +309,11 @@ struct Payment: Codable, FetchableRecord, PersistableRecord {
     }
     
     // 初始化方法
-    init(id: Int64? = nil, userId: Int64, propertyId: Int64, 
-         amount: Double, type: String = "property_fee", 
-         status: String = "pending", paymentMethod: String? = nil, 
+    init(id: Int64? = nil, userId: Int64, propertyId: Int64,
+         amount: Double, type: String = "property_fee",
+         status: String = "pending", paymentMethod: String? = nil,
          transactionId: String? = nil, billNumber: String? = nil,
-         paymentDate: Date? = nil, createdAt: Date = Date(), 
+         paymentDate: Date? = nil, createdAt: Date = Date(),
          updatedAt: Date = Date(), syncStatus: String = "synced") {
         self.id = id
         self.userId = userId
@@ -687,4 +716,4 @@ extension Models.AdminLoginResponse.OwnerInfo {
             community: nil
         )
     }
-} 
+}
