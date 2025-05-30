@@ -70,28 +70,26 @@ class CallManager: ObservableObject {
     
     // 处理来电
     func handleIncomingCall(caller: String, number: String) {
-        print("[CallManager] handleIncomingCall 被调用，caller: \(caller), number: \(number)")
+        guard self.state != .incoming, self.incomingCall == nil else { return }
         DispatchQueue.main.async {
             self.state = .incoming
             self.currentCaller = caller
             self.currentNumber = number
             self.incomingCall = IncomingCallInfo(name: caller, number: number)
-            NotificationCenter.default.post(name: NSNotification.Name("IncomingCallReceived"), object: nil, userInfo: ["caller": caller, "number": number])
+            RingtonePlayer.shared.play()
         }
     }
     
     // 清理来电状态
     func clearIncomingCall() {
         DispatchQueue.main.async {
-            if self.state == .incoming {
-                self.state = .idle
-                self.currentCaller = ""
-                self.currentNumber = ""
-                self.errorMessage = ""
-                self.incomingCall = nil
-                NotificationCenter.default.post(name: NSNotification.Name("IncomingCallEnded"), object: nil)
-                print("[CallManager] 清除来电状态")
-            }
+            self.incomingCall = nil
+            self.state = .idle
+            self.currentCaller = ""
+            self.currentNumber = ""
+            self.errorMessage = ""
+            RingtonePlayer.shared.stop()
+            NotificationCenter.default.post(name: NSNotification.Name("IncomingCallEnded"), object: nil)
         }
     }
     
@@ -104,7 +102,7 @@ class CallManager: ObservableObject {
     func endCall() {
         print("[CallManager] 结束通话")
         sipManager?.terminateCall()
-        clearIncomingCall()
+        clearIncomingCall() // 这里会自动停止振铃和关闭UI
     }
     
     // 切换静音状态
@@ -331,4 +329,20 @@ class CallManagerCallback: SipManagerCallback {
 // 添加通话状态枚举
 enum CallManagerState {
     case idle, incoming, connecting, connected, ended, failed
+}
+
+class RingtonePlayer {
+    static let shared = RingtonePlayer()
+    private var isPlaying = false
+
+    func play() {
+        stop()
+        isPlaying = true
+        AudioServicesPlaySystemSound(1016) // 系统来电铃声
+    }
+
+    func stop() {
+        isPlaying = false
+        // 系统声音无需手动stop
+    }
 }

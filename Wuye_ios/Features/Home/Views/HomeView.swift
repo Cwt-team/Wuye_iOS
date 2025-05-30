@@ -5,7 +5,7 @@ struct HomeView: View {
     
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea() // 彻底全屏白底
+            Color(.systemBackground).ignoresSafeArea() // 适配深浅模式
             VStack(spacing: 0) {
                 // 1. 用户信息区
                 Home.HeaderView()

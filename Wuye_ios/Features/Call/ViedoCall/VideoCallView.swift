@@ -1,9 +1,12 @@
-// VideoCallView.swift
 import SwiftUI
+import linphonesw
 
 /// 视频通话主界面
 struct VideoCallView: View {
     @ObservedObject var manager: VideoCallManager = .shared
+    let call: linphonesw.Call
+    let callerName: String
+    let callerNumber: String
     
     var body: some View {
         ZStack {

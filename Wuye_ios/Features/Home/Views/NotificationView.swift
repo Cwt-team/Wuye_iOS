@@ -38,7 +38,7 @@ extension Home {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white)
+                        .fill(Color(.systemBackground))
                         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
                 )
                 .padding(.horizontal, 16)
@@ -64,12 +64,12 @@ extension Home {
                 // 通知图标
                 ZStack {
                     Circle()
-                        .fill(item.isRead ? Color.gray.opacity(0.1) : Color.blue.opacity(0.1))
+                        .fill(item.isRead ? Color.secondary.opacity(0.1) : Color.accentColor.opacity(0.1))
                         .frame(width: 40, height: 40)
                     
                     Image(systemName: "bell.fill")
                         .font(.system(size: 16))
-                        .foregroundColor(item.isRead ? .gray : .blue)
+                        .foregroundColor(item.isRead ? .secondary : .accentColor)
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
@@ -78,19 +78,19 @@ extension Home {
                         Text(item.title)
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundColor(item.isRead ? .gray : .primary)
+                            .foregroundColor(item.isRead ? .secondary : .primary)
                         
                         Spacer()
                         
                         Text(item.date)
                             .font(.caption2)
-                            .foregroundColor(.gray)
+                            .foregroundColor(.secondary)
                     }
                     
                     // 内容
                     Text(item.content)
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                         .lineLimit(2)
                 }
             }
@@ -111,4 +111,4 @@ struct NotificationView_Previews: PreviewProvider {
             .padding(.vertical)
             .background(Color.gray.opacity(0.1))
     }
-} 
+}

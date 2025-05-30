@@ -4,7 +4,7 @@ import linphonesw
 import AVFoundation
 
 struct SipTestView: View {
-    @State private var server: String = UserDefaults.standard.string(forKey: "sipDomain") ?? "116.198.199.38"
+    @State private var server: String = UserDefaults.standard.string(forKey: "sipDomain") ?? ""
     @State private var port: String = UserDefaults.standard.string(forKey: "sipPort") ?? "5060"
     @State private var username: String = UserDefaults.standard.string(forKey: "sipUsername") ?? "5001"
     @State private var password: String = UserDefaults.standard.string(forKey: "sipPassword") ?? "5001"

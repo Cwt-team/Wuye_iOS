@@ -17,10 +17,11 @@ extension Home {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("欢迎，\(authManager.currentUser?.username ?? "访客")")
                             .font(.headline)
+                            .foregroundColor(.primary)
                         
                         Text(authManager.currentUser?.community ?? "您的小区")
                             .font(.subheadline)
-                            .foregroundColor(.gray)
+                            .foregroundColor(.secondary)
                     }
                     
                     Spacer()
@@ -49,7 +50,7 @@ extension Home {
                 // 分隔线
                 Divider()
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
         }
     }
 }
