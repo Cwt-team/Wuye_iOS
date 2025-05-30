@@ -270,7 +270,7 @@ struct SIPSettingsView: View {
     private func performTestCall() {
         // 呼叫SIP测试服务
         let testNumber = "sip:echo@" + sipServer
-        SipManager.shared.call(recipient: testNumber)
+        //SipManager.shared.call(recipient: testNumber)
         
         // 显示呼叫提示
         alertMessage = "正在测试呼叫: \(testNumber)"

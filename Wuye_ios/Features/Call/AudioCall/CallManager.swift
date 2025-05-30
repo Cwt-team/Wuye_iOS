@@ -18,9 +18,9 @@ class CallManager: ObservableObject {
     // 私有初始化器确保只有一个实例
     private init() {
         print("[CallManager] 开始初始化")
-        // 先获取SipManager引用，避免重复创建
         self.sipManager = SipManager.shared
         setupAudioPermissions()
+        self.setupCallbacks()
         
         // 立即设置回调，而不是延迟
         self.setupCallbacks()
@@ -70,13 +70,13 @@ class CallManager: ObservableObject {
     
     // 处理来电
     func handleIncomingCall(caller: String, number: String) {
-        print("[CallManager] 收到来电: \(caller), 号码: \(number)")
+        print("[CallManager] handleIncomingCall 被调用，caller: \(caller), number: \(number)")
         DispatchQueue.main.async {
             self.state = .incoming
             self.currentCaller = caller
             self.currentNumber = number
-            
-
+            self.incomingCall = IncomingCallInfo(name: caller, number: number)
+            NotificationCenter.default.post(name: NSNotification.Name("IncomingCallReceived"), object: nil, userInfo: ["caller": caller, "number": number])
         }
     }
     
@@ -88,7 +88,8 @@ class CallManager: ObservableObject {
                 self.currentCaller = ""
                 self.currentNumber = ""
                 self.errorMessage = ""
-
+                self.incomingCall = nil
+                NotificationCenter.default.post(name: NSNotification.Name("IncomingCallEnded"), object: nil)
                 print("[CallManager] 清除来电状态")
             }
         }
@@ -97,15 +98,6 @@ class CallManager: ObservableObject {
     // 播放来电提示音
     private func playIncomingCallSound() {
         AudioServicesPlaySystemSound(1016) // 系统铃声ID
-    }
-    
-    // 发起呼叫
-    func makeCall(to number: String, name: String = "直接拨号") {
-        print("[CallManager] 拨打电话: \(number)")
-        // SIP呼叫
-        sipManager?.call(recipient: number)
-        isCallActive = true
-        callStartTime = Date()
     }
     
     // 结束通话
@@ -309,7 +301,6 @@ class CallManagerCallback: SipManagerCallback {
     
     func onIncomingCall(call: linphonesw.Call, caller: String) {
         DispatchQueue.main.async {
-            // 从 call 对象中获取号码，或直接使用 caller
             let number = call.remoteAddress?.username ?? caller
             self.manager?.handleIncomingCall(caller: caller, number: number)
         }

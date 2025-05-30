@@ -1,4 +1,3 @@
-
 import SwiftUI
 import AVFoundation
 import linphonesw
@@ -169,7 +168,9 @@ struct CallView: View {
             
             callTimer?.invalidate()
             callTimer = nil
-            sipManager.terminateCall()
+            if let currentCall = sipManager.currentCall {
+                sipManager.terminateCall()
+            }
         }
         .onChange(of: sipManager.callState) { newState in
             updateCallStatus()
@@ -227,6 +228,7 @@ struct CallView: View {
         case .outgoingInit, .ringing:
             callStatus = "正在呼叫..."
         case .incoming:
+            print("[UI日志] CallView 收到来电状态，准备显示来电界面")
             callStatus = "来电..."
         case .connected, .running:
             isConnected = true

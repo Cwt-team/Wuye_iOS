@@ -97,89 +97,6 @@ struct SipTestView: View {
                 }
                 
                 if isRegistered {
-                    Section(header: Text("呼叫测试")) {
-                        TextField("呼叫目标号码", text: $callTarget)
-                            .keyboardType(.phonePad)
-                        
-                        HStack {
-                            Text("通话状态:")
-                            Spacer()
-                            Text(callStatus)
-                                .foregroundColor(getCallStatusColor())
-                        }
-                        
-                        Button(action: {
-                            if isCalling {
-                                endCall()
-                            } else {
-                                startCall()
-                            }
-                        }) {
-                            HStack {
-                                Text(isCalling ? "结束通话" : "发起呼叫")
-                                    .frame(maxWidth: .infinity)
-                                    .foregroundColor(isCalling ? .red : .blue)
-                            }
-                        }
-                        
-                        if isCalling {
-                            VStack(spacing: 10) {
-                                HStack {
-                                    Button(action: { toggleMute() }) {
-                                        VStack {
-                                            Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 24, height: 24)
-                                                .padding(12)
-                                                .background(isMuted ? Color.red.opacity(0.2) : Color.gray.opacity(0.2))
-                                                .clipShape(Circle())
-                                            Text(isMuted ? "取消静音" : "静音")
-                                                .font(.caption)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    Spacer()
-                                    
-                                    Button(action: { toggleSpeaker() }) {
-                                        VStack {
-                                            Image(systemName: isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 24, height: 24)
-                                                .padding(12)
-                                                .background(isSpeakerOn ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
-                                                .clipShape(Circle())
-                                            Text(isSpeakerOn ? "关闭扬声器" : "扬声器")
-                                                .font(.caption)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    Spacer()
-                                    
-                                    // 新增的重新连接按钮
-                                    Button(action: { reconnectAudio() }) {
-                                        VStack {
-                                            Image(systemName: "arrow.clockwise")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 24, height: 24)
-                                                .padding(12)
-                                                .background(Color.green.opacity(0.2))
-                                                .clipShape(Circle())
-                                            Text("重连音频")
-                                                .font(.caption)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                                .padding(.vertical, 10)
-                            }
-                        }
-                    }
-                    
                     // 新增通话信息区域
                     if isCalling && showConnectionInfo {
                         Section(header: Text("通话信息")) {
@@ -509,15 +426,6 @@ struct SipTestView: View {
         registrationTimer = nil
     }
     
-    private func startCall() {
-        saveSettings()
-        addLog("SIP日志: 正在发起呼叫: \(callTarget)")
-        sipManager.call(recipient: callTarget)
-        
-        // 模拟一些通话信息（真实应用中应从SIP会话中获取）
-        updateCallInfo()
-    }
-    
     private func endCall() {
         addLog("SIP日志: 正在结束通话")
         sipManager.terminateCall()
@@ -533,35 +441,6 @@ struct SipTestView: View {
         isSpeakerOn = !isSpeakerOn
         sipManager.toggleSpeaker(isSpeakerOn)
         addLog("SIP日志: 扬声器 \(isSpeakerOn ? "已开启" : "已关闭")")
-    }
-    
-    // 新增的重新连接音频功能
-    private func reconnectAudio() {
-        addLog("SIP日志: 尝试重新连接音频...")
-        
-        do {
-            try sipManager.prepareAudioForCall()
-            addLog("SIP日志: 音频设备已重新配置")
-        } catch {
-            addLog("SIP日志: 重新连接音频失败: \(error)")
-        }
-    }
-    
-    // 模拟获取通话信息
-    private func updateCallInfo() {
-        // 这些值应该从实际网络和SIP会话中获取
-        networkType = "4G/WiFi"
-        localIP = "192.168.1.xxx"
-        signalStrength = Int.random(in: 3...5)
-        audioQuality = ["优良", "良好", "一般"].randomElement()!
-        callLatency = "\(Int.random(in: 50...200))ms"
-        
-        // 在实际通话中定期更新
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            if isCalling {
-                updateCallInfo()
-            }
-        }
     }
     
     private func diagnoseAudioDevices() {

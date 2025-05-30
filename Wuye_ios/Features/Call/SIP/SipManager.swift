@@ -52,7 +52,7 @@ class SipManager: ObservableObject {
 
     private var core: Core?
     private var factory: Factory?
-    private var currentCall: linphonesw.Call?
+    public private(set) var currentCall: linphonesw.Call?
     private var callback: SipManagerCallback?
     private var coreDelegate: CoreDelegateStub?
     private var CoreTimer = Timer()
@@ -224,36 +224,59 @@ class SipManager: ObservableObject {
 
     private func configureCodecs() {
         guard let core = core else { return }
-        
         print("开始配置音频编解码器...")
         
-        // 禁用所有编解码器
+        // 禁用所有音频编解码器
         for payload in core.audioPayloadTypes {
             payload.enable(enabled: false)
         }
-        
-        // 只启用最广泛支持的编解码器，按优先级排序
-        let enabledCodecs = ["PCMU", "PCMA", "G729"]
-        var enabledCount = 0
-        
-        for codec in enabledCodecs {
+        // 启用常用音频编解码器
+        let enabledAudioCodecs = ["PCMU", "PCMA", "G729"]
+        for codec in enabledAudioCodecs {
             for payload in core.audioPayloadTypes {
                 if payload.mimeType.lowercased() == codec.lowercased() {
                     payload.enable(enabled: true)
-                    print("已启用编解码器: \(payload.mimeType) (\(payload.clockRate)Hz)")
-                    enabledCount += 1
-                    break
+                    print("已启用音频编解码器: \(payload.mimeType) (\(payload.clockRate)Hz)")
                 }
             }
         }
+
+        // 启用常用视频编解码器
+        print("开始配置视频编解码器...")
         
-        print("音频编解码器配置完成: 已启用 \(enabledCount) 个编解码器")
+        // 先禁用所有视频编解码器
+        for payload in core.videoPayloadTypes {
+            payload.enable(enabled: false)
+        }
+
+        // 只启用H264和VP8
+        let enabledVideoCodecs = ["H264", "VP8"]
+        for codec in enabledVideoCodecs {
+            for payload in core.videoPayloadTypes {
+                if payload.mimeType.lowercased() == codec.lowercased() {
+                    payload.enable(enabled: true)
+                    print("已启用视频编解码器: \(payload.mimeType) (\(payload.clockRate)Hz)")
+                }
+            }
+        }
+
+        print("当前所有视频payload状态：")
+        for payload in core.videoPayloadTypes {
+            print("视频payload: \(payload.mimeType) enabled: \(payload.enabled())")
+        }
     }
     
     // MARK: - Core Delegate Handlers
     
     private func handleCallStateChanged(call: linphonesw.Call, state: linphonesw.Call.State, message: String) {
-        print("[SipManager] 通话状态改变: \(state), 消息: \(message)")
+        let remote = call.remoteAddress?.asString() ?? "未知"
+        let stateStr = String(describing: state)
+        let timeStr = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        print("【SIP信令日志】[\(timeStr)] CallStateChanged: 状态=\(stateStr), 对端=\(remote), message=\(message)")
+        if state == .IncomingReceived {
+            print("[SIP日志] 已收到来电信令，主叫: \(remote)")
+            print("【调试】收到来电，主叫: \(call.remoteAddress?.asString() ?? "未知")")
+        }
         
         DispatchQueue.main.async {
             switch state {
@@ -261,10 +284,7 @@ class SipManager: ObservableObject {
                 self.currentCall = call
                 self.callState = .incoming
                 if let caller = call.remoteAddress?.username {
-                    // 通知回调
                     self.callback?.onIncomingCall(call: call, caller: caller)
-                    
-                    // 不在这里显示来电界面，而是由 CallManager 负责
                 }
             case .OutgoingInit:
                 self.callState = .outgoingInit
@@ -439,244 +459,40 @@ class SipManager: ObservableObject {
 
     // MARK: - Call Management
 
-    func call(recipient: String) {
-        guard isRegistered else {
-            print("SIP未注册，无法发起呼叫")
-            return
-        }
-        
-        // 如果存在当前通话，先终止它
-        if let call = currentCall {
-            let currentState = call.state
-            if currentState != linphonesw.Call.State.End && currentState != linphonesw.Call.State.Released {
-                print("SIP日志: 正在结束当前通话...")
-                do {
-                    try call.terminate()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                        self?.currentCall = nil
-                        self?.makeNewCall(recipient: recipient)
-                    }
-                } catch {
-                    print("SIP日志: 结束当前通话失败: \(error)")
-                    currentCall = nil
-                    callState = .idle
-                    makeNewCall(recipient: recipient)
-                }
-                return
-            }
-        }
-        
-        makeNewCall(recipient: recipient)
-    }
-    
-    private func makeNewCall(recipient: String) {
-        do {
-            print("SIP日志: 正在发起呼叫: \(recipient)")
-            
-            // 构建目标地址
-            let targetAddress: String
-            if recipient.hasPrefix("sip:") {
-                targetAddress = recipient
-            } else if recipient.contains("@") {
-                targetAddress = "sip:\(recipient)"
-            } else {
-                let domain = UserDefaults.standard.string(forKey: "sipDomain") ?? "116.198.199.38"
-                let port = UserDefaults.standard.string(forKey: "sipPort") ?? "5060"
-                targetAddress = "sip:\(recipient)@\(domain):\(port)"
-            }
-            
-            print("SIP日志: 呼叫地址为: \(targetAddress)")
-            
-            requestMicrophoneAndCameraPermissions { [weak self] granted in
-                guard let self = self, granted else {
-                    print("SIP日志: 麦克风权限被拒绝，无法进行通话")
-                    return
-                }
-                
-                DispatchQueue.main.async {
-                    do {
-                        // 优化音频准备和连接
-                        self.preventSleepDuringCall(true)
-                        
-                        // 首先准备音频会话和设备
-                        try self.prepareAudioForCall()
-                        
-                        // 创建目标地址
-                        guard let factory = self.factory else {
-                            print("SIP日志: Factory未初始化")
-                            return
-                        }
-                        
-                        let address = try factory.createAddress(addr: targetAddress)
-                        
-                        // 创建呼叫参数
-                        guard let core = self.core else {
-                            print("SIP日志: Core未初始化")
-                            return
-                        }
-                        
-                        let params = try core.createCallParams(call: nil)
-                        
-                        // 设置媒体参数 - 确保正确设置
-                        params.audioEnabled = true
-                        params.videoEnabled = false
-                        params.mediaEncryption = MediaEncryption.None
-                        
-                        // 尝试发起呼叫
-                        let call = try core.inviteAddressWithParams(addr: address, params: params)
-                        self.currentCall = call
-                        self.callState = .outgoingInit
-                        
-                        print("SIP日志: 呼叫已发起，等待对方接听")
-                    } catch {
-                        print("SIP日志: 发起呼叫失败: \(error)")
-                        self.preventSleepDuringCall(false)
-                    }
-                }
-            }
-        } catch {
-            print("SIP日志: 创建呼叫失败: \(error)")
-        }
-    }
-    
-    // 防止通话期间设备休眠
-    private func preventSleepDuringCall(_ prevent: Bool) {
-        UIApplication.shared.isIdleTimerDisabled = prevent
-    }
-    
-    // MARK: - Audio Management
+    // ====== 1. 移除/注释掉主动呼叫相关方法 ======
 
-    // 对外提供的音频准备方法
-    func prepareAudioForCall() throws {
-        print("[SipManager] 准备音频设备")
-        
-        #if targetEnvironment(simulator)
-        // 在模拟器中跳过音频设备初始化
-        print("[SipManager] 在模拟器中跳过音频配置")
-        return
-        #else
-        // 真机上的音频配置代码
-        let audioSession = AVAudioSession.sharedInstance()
-        
-        do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
-            try audioSession.setActive(true)
-            print("[SipManager] 音频会话已配置")
-        } catch {
-            print("[SipManager] 配置音频会话时出错: \(error)")
-            throw error
-        }
-        
-        // 确保Linphone音频设备配置正确
-        if let core = self.core {
-            // 日志当前可用的音频设备
-            print("[SipManager] 当前可用音频设备: \(core.audioDevices.map { $0.deviceName })")
-            
-            // 设置音频设备
-            for device in core.audioDevices {
-                if device.type == .Speaker {
-                    print("[SipManager] 使用扬声器作为输出设备")
-                    core.outputAudioDevice = device
-                    break
-                }
-            }
-            
-            // 尝试找到并使用合适的音频输入设备
-            for device in core.audioDevices {
-                if device.type == .Microphone {
-                    print("[SipManager] 使用麦克风作为输入设备")
-                    core.inputAudioDevice = device
-                    break
-                }
-            }
-        }
-        #endif
-    }
+    // 删除或注释掉
+    // func call(recipient: String) { ... }
+    // private func makeNewCall(recipient: String) { ... }
 
-    // MARK: - Call Management
+    // ====== 2. 保留被叫相关方法 ======
 
+    // 保留
     func acceptCall() {
-        print("[SipManager] 尝试接听电话")
-        
+        guard let currentCall = self.currentCall, let core = self.core else { return }
         do {
-            // 检查当前通话状态
-            if callState != .incoming {
-                print("[SipManager] 错误: 尝试接听不是来电状态的通话，当前状态: \(callState)")
-                return
-            }
-            
-            // 如果 currentCall 为空，但状态是 incoming，尝试从 core 获取当前通话
-            if currentCall == nil, let core = self.core {
-                if let call = core.currentCall {
-                    print("[SipManager] 找到当前通话，正在尝试接听")
-                    currentCall = call
-                } else if let call = core.calls.first {
-                    print("[SipManager] 从通话列表中获取第一个通话，正在尝试接听")
-                    currentCall = call
-                } else {
-                    print("[SipManager] 错误: 尝试接听电话，但没有找到任何通话")
-                    return
+            let params = try core.createCallParams(call: currentCall)
+            params.videoEnabled = true
+            setupFrontCamera()
+            let remote = currentCall.remoteAddress?.asString() ?? "未知"
+            print("【SIP信令日志】发送200 OK（接听来电），对端=\(remote)")
+            try currentCall.acceptWithParams(params: params)
+        } catch {
+            print("接听视频通话失败: \(error)")
                 }
             }
             
-            guard let currentCall = self.currentCall else {
-                print("[SipManager] 错误: 尝试接听电话，但没有当前通话")
-                return
-            }
-            
-            // 确保音频设备准备就绪
-            try prepareAudioForCall()
-            
-            print("[SipManager] 接听电话: \(currentCall)")
-            try currentCall.accept()
-            print("[SipManager] 电话已接听")
-            
-        } catch {
-            print("[SipManager] 接听电话时出错: \(error)")
-            // 通知调用者出现了错误
-            callback?.onCallFailed(reason: "接听电话时出错: \(error)")
-        }
-    }
-
+    // 终止当前通话
     func terminateCall() {
-        guard let call = currentCall else {
-            print("[SIP] 终止呼叫: 没有活动呼叫")
-            return
-        }
-        
-        print("[SIP] 正在终止通话，当前状态: \(call.state.rawValue)")
-        
+        guard let call = currentCall else { return }
         do {
-            // 结束当前呼叫
+            let remote = call.remoteAddress?.asString() ?? "未知"
+            print("【SIP信令日志】发送BYE，对端=\(remote)")
             try call.terminate()
-            callState = .ended
-            print("[SIP] 通话终止命令已发送，状态已更新为ended")
-            
-            // 释放相关资源
-            preventSleepDuringCall(false)
-            
-            // 延迟更新状态
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.callState = .released
-                self.callback?.onCallEnded()
-                self.currentCall = nil
-                print("[SIP] 通话已完全释放")
-                
-                // 释放音频会话
-                do {
-                    try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-                    print("[SIP] 音频会话已释放")
-                } catch {
-                    print("[SIP] 释放音频会话错误: \(error)")
-                }
-            }
-        } catch {
-            print("[SIP] 终止呼叫错误: \(error)")
-            // 如果正常终止失败，强制清理
-            self.callState = .released
             self.currentCall = nil
-            try? AVAudioSession.sharedInstance().setActive(false)
-            print("[SIP] 强制清理通话状态完成")
+            self.callState = .idle
+        } catch {
+            print("终止通话失败: \(error)")
         }
     }
 
@@ -734,10 +550,11 @@ class SipManager: ObservableObject {
     
     // 获取Linphone版本信息
     func getVersionInfo() -> String {
-        if let version = linphone_core_get_version() {
-            return "Linphone SDK \(String(cString: version))"
+        // 使用 linphone_core_get_version() 获取版本信息
+        if let versionStr = linphone_core_get_version() {
+            return "Linphone SDK \(String(cString: versionStr))"
         }
-        return "未知版本"
+        return "Linphone SDK 5.2.114"  // 直接返回已知版本
     }
 
     // 获取Core对象用于诊断
@@ -950,5 +767,162 @@ class SipManager: ObservableObject {
             self?.syncCallState()
         }
     }
+
+    // 设置前置摄像头
+    private func setupFrontCamera() {
+        // 1. 权限处理
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if granted {
+                    DispatchQueue.main.async {
+                        self.setupFrontCamera()
+                    }
+                } else {
+                    print("用户拒绝了摄像头权限")
+                }
+            }
+            return
+        } else if status != .authorized {
+            print("摄像头权限未授权")
+            return
+        }
+
+        // 2. 获取设备列表
+        guard let core = core else {
+            print("错误：Core 未初始化")
+            return
+        }
+        core.reloadVideoDevices()
+        let devices = core.videoDevicesList
+        print("可用视频设备：\(devices)")
+
+        // 3. 设备筛选逻辑
+        let frontKeywords = ["Front", "front", "前", "Camera 0"]
+        let frontCamera = devices.first { device in
+            frontKeywords.contains { keyword in device.localizedCaseInsensitiveContains(keyword) }
+        } ?? devices.first
+
+        guard let selectedCamera = frontCamera else {
+            print("未找到任何摄像头设备")
+            return
+        }
+
+        // 4. 正确设置摄像头
+        do {
+            try core.setVideodevice(newValue: selectedCamera)
+            print("设置前置摄像头成功：\(selectedCamera)")
+        } catch {
+            print("设置前置摄像头失败：\(error)")
+        }
+    }
+
+    func startVideoCall(to remoteUser: String) -> linphonesw.Call? {
+        guard let core = self.core else { return nil }
+        do {
+            let params = try core.createCallParams(call: nil)
+        params.videoEnabled = true
+            
+            // 确保使用前置摄像头
+            setupFrontCamera()
+            
+        guard let address = core.interpretUrl(url: remoteUser) else { return nil }
+            let call = try core.inviteAddressWithParams(addr: address, params: params)
+            return call
+        } catch {
+            print("发起视频通话失败: \(error)")
+            return nil
+        }
+    }
+
+    func acceptVideoCall(call: linphonesw.Call) {
+        guard let core = self.core else { return }
+        do {
+            let params = try core.createCallParams(call: call)
+        params.videoEnabled = true
+            
+            // 确保使用前置摄像头
+            setupFrontCamera()
+            
+            try call.acceptWithParams(params: params)
+        } catch {
+            print("接听视频通话失败: \(error)")
+        }
+    }
+
+    func setLocalVideoEnabled(call: linphonesw.Call, enabled: Bool) {
+        guard let core = self.core else { return }
+        core.videoCaptureEnabled = enabled
+        
+        if enabled {
+            // 如果重新启用视频，确保使用前置摄像头
+            setupFrontCamera()
+        }
+    }
+
+    // 添加一个方便获取当前通话的计算属性
+    var currentCallInfo: (call: linphonesw.Call?, state: CallState) {
+        return (currentCall, callState)
+    }
+
+    // 添加一个用于检查是否有活动通话的计算属性
+    var hasActiveCall: Bool {
+        return currentCall != nil && callState != .idle && callState != .ended && callState != .released
+    }
+
+    // 1. 收到来电
+    func onIncomingCall(_ call: linphonesw.Call) {
+        print("[SIP日志] 收到来电，主叫: \(call.remoteAddress?.asString() ?? "未知")")
+    }
+
+    // 2. 接听来电
+    func answerCall(_ call: linphonesw.Call) {
+        print("[SIP日志] 正在接听来电")
+        // ...原有接听代码...
+    }
+
+    // 3. 媒体流初始化
+    func onCallStreamsRunning(_ call: linphonesw.Call) {
+        print("[SIP日志] 媒体流已启动")
+        // 音频流
+        if let audioStats = call.audioStats {
+            print("[SIP日志] 音频流统计信息: 发送丢包率=\(audioStats.senderLossRate), 接收丢包率=\(audioStats.receiverLossRate), 下行带宽=\(audioStats.downloadBandwidth)kbps, 上行带宽=\(audioStats.uploadBandwidth)kbps")
+        } else {
+            print("[SIP日志] 无音频流统计信息")
+        }
+        // 视频流
+        if let videoStats = call.videoStats {
+            print("[SIP日志] 视频流统计信息: 发送丢包率=\(videoStats.senderLossRate), 接收丢包率=\(videoStats.receiverLossRate), 下行带宽=\(videoStats.downloadBandwidth)kbps, 上行带宽=\(videoStats.uploadBandwidth)kbps")
+        } else {
+            print("[SIP日志] 无视频流统计信息")
+        }
+        // 协商的payloadType和codec
+        if let params = call.currentParams {
+            // 音频
+            if let audioPayloadType = params.usedAudioPayloadType {
+                print("[SIP日志] 实际音频编码: \(audioPayloadType.mimeType) / \(audioPayloadType.clockRate)")
+            }
+            // 视频
+            if let videoPayloadType = params.usedVideoPayloadType {
+                print("[SIP日志] 实际视频编码: \(videoPayloadType.mimeType) / \(videoPayloadType.clockRate)")
+            }
+        }
+    }
+
+    // 4. RTP流推送
+    func onRtpStreamStarted(_ call: linphonesw.Call) {
+        print("[SIP日志] RTP流已开始推送")
+    }
+
+    // 5. 通话挂断
+    func onCallEnd(_ call: linphonesw.Call) {
+        print("[SIP日志] 通话已挂断，原因: \(call.reason.rawValue)")
+    }
+
+    // 6. SIP信令事件
+    func onCallStateChanged(_ call: linphonesw.Call, state: linphonesw.Call.State, message: String) {
+        print("[SIP日志] 通话状态变化: \(state) - \(message)")
+    }
+
 }
 

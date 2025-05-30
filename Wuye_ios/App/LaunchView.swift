@@ -45,22 +45,11 @@ struct LaunchView: View {
             NotificationCenter.default.removeObserver(self)
         }
         .sheet(isPresented: $showIncomingCall) {
-            if let call = callManager.incomingCall {
-                IncomingCallView(
-                    callerName: call.name,
-                    callerNumber: call.number
-                )
-                .environmentObject(callManager)
+            if let currentCall = SipManager.shared.currentCall {
+                IncomingCallView(call: currentCall, callerName: "来电用户", callerNumber: "未知号码")
             } else {
-                // 没有来电信息，显示错误界面
-                VStack {
-                    Text("错误：无法获取来电信息")
-                        .foregroundColor(.red)
-                    Button("关闭") {
-                        self.showIncomingCall = false
-                    }
-                    .padding()
-                }
+                // 处理没有通话的情况
+                Text("无当前通话")
             }
         }
     }

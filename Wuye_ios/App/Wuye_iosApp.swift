@@ -139,7 +139,7 @@ struct Wuye_iosApp: App {
     // MARK: - SIP管理器初始化
     private func configureSipManager() {
         let defaults = UserDefaults.standard
-        let sipServer = defaults.string(forKey: "sipServer") ?? "sip.wuyeapp.com"
+        let sipServer = defaults.string(forKey: "sipServer") ?? "116.198.199.38"
         let sipPort = defaults.string(forKey: "sipPort") ?? "5060"
         let sipUsername = defaults.string(forKey: "sipUsername") ?? ""
         let sipPassword = defaults.string(forKey: "sipPassword") ?? ""

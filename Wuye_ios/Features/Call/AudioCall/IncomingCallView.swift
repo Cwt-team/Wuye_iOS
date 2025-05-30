@@ -1,4 +1,3 @@
-
 import SwiftUI
 import AVFoundation
 import AudioToolbox
@@ -16,10 +15,12 @@ struct IncomingCallView: View {
     
     @Environment(\.presentationMode) var presentationMode
     
+    let call: linphonesw.Call
     let callerName: String
     let callerNumber: String
     
-    init(callerName: String, callerNumber: String) {
+    init(call: linphonesw.Call, callerName: String, callerNumber: String) {
+        self.call = call
         self.callerName = callerName
         self.callerNumber = callerNumber
     }
@@ -61,7 +62,6 @@ struct IncomingCallView: View {
                     Button(action: {
                         stopRinging()
                         sipManager.terminateCall()
-                        // 清除来电状态
                         callManager.clearIncomingCall()
                     }) {
                         VStack {
@@ -134,10 +134,6 @@ struct IncomingCallView: View {
         }
         .fullScreenCover(isPresented: $showCallView) {
             CallView(callerName: callerName, callerNumber: callerNumber, isIncoming: true)
-                .onDisappear {
-                    // 当通话结束，清除来电状态
-                    callManager.clearIncomingCall()
-                }
         }
     }
     
@@ -220,6 +216,10 @@ struct IncomingCallView: View {
 
 struct IncomingCallView_Previews: PreviewProvider {
     static var previews: some View {
-        IncomingCallView(callerName: "张三", callerNumber: "13800138000")
+        if let currentCall = SipManager.shared.currentCall {
+            IncomingCallView(call: currentCall, callerName: "张三", callerNumber: "123456")
+        } else {
+            Text("No current call available for preview")
+        }
     }
 }

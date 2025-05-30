@@ -45,13 +45,6 @@ struct MessagingView: View {
                             Text("通话")
                         }
                         .tag(1)
-                    
-                    // 联系人
-                    MessageContactListView()
-                        .tabItem {
-                            Text("联系人")
-                        }
-                        .tag(2)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 
@@ -102,25 +95,6 @@ struct CallHistoryView: View {
     }
 }
 
-// 联系人列表视图
-struct MessageContactListView: View {
-    var body: some View {
-        List {
-            Section(header: Text("物业服务")) {
-                MessageContactRow(name: "物业服务中心", number: "1001", isOfficial: true)
-                MessageContactRow(name: "安保中心", number: "1002", isOfficial: true)
-                MessageContactRow(name: "维修中心", number: "1003", isOfficial: true)
-            }
-            
-            Section(header: Text("小区联系人")) {
-                MessageContactRow(name: "张三", number: "2001")
-                MessageContactRow(name: "李四", number: "2002")
-                MessageContactRow(name: "王五", number: "2003")
-            }
-        }
-        .listStyle(InsetGroupedListStyle())
-    }
-}
 
 // 底部选项卡按钮
 struct TabButton: View {
