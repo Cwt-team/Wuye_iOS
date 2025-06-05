@@ -60,6 +60,7 @@ struct IncomingCallView: View {
                     Button(action: {
                         sipManager.terminateCall()
                         callManager.clearIncomingCall()
+                        self.presentationMode.wrappedValue.dismiss()
                     }) {
                         VStack {
                             Circle()
@@ -80,12 +81,8 @@ struct IncomingCallView: View {
                     
                     // 接听按钮
                     Button(action: {
-                        callAccepted = true
-                        sipManager.acceptCall()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            showCallView = true
-                        }
-                        callManager.clearIncomingCall()
+                        print("点击接听")
+                        showCallView = true
                     }) {
                         VStack {
                             Circle()
@@ -123,6 +120,8 @@ struct IncomingCallView: View {
         }
         .fullScreenCover(isPresented: $showCallView) {
             VideoCallView(call: call, callerName: callerName, callerNumber: callerNumber)
+                .environmentObject(SipManager.shared)
+                .environmentObject(VideoCallManager.shared)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallEnded"))) { _ in
             self.showCallView = false

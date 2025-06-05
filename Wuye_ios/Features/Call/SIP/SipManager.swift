@@ -52,10 +52,31 @@ class SipManager: ObservableObject {
 
     private var core: Core?
     private var factory: Factory?
-    public private(set) var currentCall: linphonesw.Call?
+    @Published var currentCall: linphonesw.Call?
     private var callback: SipManagerCallback?
     private var coreDelegate: CoreDelegateStub?
+
     private var CoreTimer = Timer()
+
+    // 修改为 UIView? 类型，并添加 didSet 观察者
+    @Published var localVideoView: UIView? {
+        didSet {
+            print("【SIP日志】SipManager.localVideoView didSet: \(localVideoView != nil ? "非空" : "空")")
+            if let core = core {
+                core.nativePreviewWindow = localVideoView
+                print("【SIP日志】core.nativePreviewWindow 已更新为 \(localVideoView != nil ? "非空" : "空")")
+            }
+        }
+    }
+    @Published var remoteVideoView: UIView? {
+        didSet {
+            print("【SIP日志】SipManager.remoteVideoView didSet: \(remoteVideoView != nil ? "非空" : "空")")
+            if let core = core {
+                core.nativeVideoWindow = remoteVideoView
+                print("【SIP日志】core.nativeVideoWindow 已更新为 \(remoteVideoView != nil ? "非空" : "空")")
+            }
+        }
+    }
 
     private init() {
         print("[SipManager] 开始初始化")
@@ -77,54 +98,58 @@ class SipManager: ObservableObject {
             factory = Factory.Instance
             
             // 创建Core实例
-            core = try factory?.createCore(configPath: nil, factoryConfigPath: nil, systemContext: nil)
-            print("Linphone Core创建成功")
+            let createdCore = try factory?.createCore(configPath: nil, factoryConfigPath: nil, systemContext: nil)
             
-            // 设置代理
-            setupCoreDelegate()
-            
-            // 配置Core
-            configureCore()
-            
-            // 配置编解码器
-            configureCodecs()
-            
-            // 启动Core
-            try core?.start()
-            print("Linphone Core启动成功")
-            
-            // 启动Core迭代计时器
-            startCoreTimer()
+            // 只有当 Core 成功创建后，才继续进行后续配置和代理设置
+            if let unwrappedCore = createdCore {
+                core = unwrappedCore // 赋值给 SipManager 的 core 属性
+                print("Linphone Core创建成功")
+                
+                // 配置Core
+                configureCore()
+                
+                // 配置编解码器
+                configureCodecs()
+                
+                // 启动Core
+                try unwrappedCore.start()
+                print("Linphone Core启动成功")
+                
+                // === 延迟 CoreDelegateStub 的创建和添加，在 Core 启动后进行 ===
+                print("设置Core代理...")
+                let newCoreDelegate = CoreDelegateStub(
+                    onRegistrationStateChanged: { [weak self] (c: Core, proxyConfig: ProxyConfig, state: RegistrationState, message: String) in
+                        self?.handleRegistrationStateChanged(state: state, message: message)
+                    },
+                    onCallStateChanged: { [weak self] (c: Core, call: linphonesw.Call, state: linphonesw.Call.State, message: String) in
+                        self?.handleCallStateChanged(call: call, state: state, message: message)
+                    }
+                )
+                self.coreDelegate = newCoreDelegate
+                unwrappedCore.addDelegate(delegate: newCoreDelegate)
+                print("Core代理设置成功。")
+                // ==========================================================
+                
+                // 启动Core迭代计时器
+                startCoreTimer()
+            } else {
+                print("Linphone Core创建失败，core为nil。")
+                // Core 未成功创建，更新注册状态为失败
+                DispatchQueue.main.async {
+                    self.registrationState = .failed
+                    self.callback?.onRegistrationFailed(reason: "Linphone Core初始化失败")
+                }
+            }
         } catch {
             print("Initialization error: \(error)")
+            // 捕获 Core 初始化过程中的错误，并更新注册状态
+            DispatchQueue.main.async {
+                self.registrationState = .failed
+                self.callback?.onRegistrationFailed(reason: "Linphone Core初始化错误: \(error.localizedDescription)")
+            }
         }
     }
     
-    private func setupCoreDelegate() {
-        guard let core = core else { return }
-        
-        coreDelegate = CoreDelegateStub(
-            onRegistrationStateChanged: { (core: Core, proxyConfig: ProxyConfig, state: RegistrationState, message: String) in
-                // 将RegistrationState转换为我们自定义的RegState
-                let regState: RegState
-                switch state {
-                case .None: regState = .none
-                case .Progress: regState = .progress
-                case .Ok: regState = .ok
-                case .Failed: regState = .failed
-                case .Cleared: regState = .cleared
-                default: regState = .none
-                }
-                self.handleRegistrationStateChanged(state: regState, message: message)
-            },
-            onCallStateChanged: { (core: Core, call: linphonesw.Call, state: linphonesw.Call.State, message: String) in
-                self.handleCallStateChanged(call: call, state: state, message: message)
-            }
-        )
-        
-        core.addDelegate(delegate: coreDelegate!)
-    }
-
     private func configureCore() {
         guard let core = core else { return }
         
@@ -274,7 +299,7 @@ class SipManager: ObservableObject {
         let timeStr = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         print("【SIP信令日志】[\(timeStr)] CallStateChanged: 状态=\(stateStr), 对端=\(remote), message=\(message)")
         if state == .IncomingReceived {
-            print("[SIP日志] 已收到来电信令，主叫: \(remote)")
+            print("【SIP日志】 已收到来电信令，主叫: \(remote)")
             print("【调试】收到来电，主叫: \(call.remoteAddress?.asString() ?? "未知")")
         }
         
@@ -295,27 +320,55 @@ class SipManager: ObservableObject {
                 self.callback?.onCallEstablished()
             case .StreamsRunning:
                 self.callState = .running
+                // 确保视频捕获和显示在媒体流运行时启用
+                if let core = self.core {
+                    core.videoCaptureEnabled = true
+                    core.videoDisplayEnabled = true
+                    print("【SIP日志】视频捕获和显示已在 StreamsRunning 状态下启用。")
+                    print("【调试】当前 core.nativePreviewWindow 是否已设置: \(core.nativePreviewWindow != nil ? "是" : "否")")
+                    print("【调试】当前 core.nativeVideoWindow 是否已设置: \(core.nativeVideoWindow != nil ? "是" : "否")")
+                    // 额外打印当前视图实例的地址，与 LinphoneVideoView 中的地址进行对比
+                    if let localView = self.localVideoView {
+                        print("【调试】SipManager 持有的本地视图实例: \(ObjectIdentifier(localView))")
+                    }
+                    if let remoteView = self.remoteVideoView {
+                        print("【调试】SipManager 持有的远端视图实例: \(ObjectIdentifier(remoteView))")
+                    }
+                }
             case .Paused:
                 self.callState = .paused
             case .End:
                 self.callState = .ended
                 self.callback?.onCallEnded()
+                self.currentCall = nil // 挂断后清空当前通话
             case .Error:
                 self.callState = .error
                 self.callback?.onCallFailed(reason: message)
+                self.currentCall = nil // 错误后清空当前通话
             default:
                 break
             }
         }
     }
     
-    private func handleRegistrationStateChanged(state: RegState, message: String) {
+    private func handleRegistrationStateChanged(state: linphonesw.RegistrationState, message: String) {
         print("注册状态变更: \(state) (\(message))")
         
         DispatchQueue.main.async {
-            self.registrationState = state
-            
+            // 将 linphonesw.RegistrationState 转换为我们自定义的 RegState
+            let regState: RegState
             switch state {
+            case .None: regState = .none
+            case .Progress: regState = .progress
+            case .Ok: regState = .ok
+            case .Failed: regState = .failed
+            case .Cleared: regState = .cleared
+            default: regState = .none // 添加 default 处理未知情况
+            }
+            
+            self.registrationState = regState // 赋值给 @Published 属性
+            
+            switch regState { // 这里使用转换后的 regState
             case .ok:
                 print("[SIP] 注册成功! 服务器已确认注册")
                 self.callback?.onRegistrationSuccess()
@@ -333,9 +386,7 @@ class SipManager: ObservableObject {
             case .none:
                 print("[SIP] 未注册状态")
                 
-            default:
-                print("[SIP] 未知注册状态")
-                break
+            // default 已经包含在 regState 的转换中，此处可以省略或留空
             }
         }
     }
@@ -469,30 +520,47 @@ class SipManager: ObservableObject {
 
     // 保留
     func acceptCall() {
-        guard let currentCall = self.currentCall, let core = self.core else { return }
+        guard let currentCall = self.currentCall, let core = self.core else {
+            print("[SipManager] acceptCall: currentCall或core为nil，无法接听。")
+            return
+        }
         do {
             let params = try core.createCallParams(call: currentCall)
             params.videoEnabled = true
+            
+            // 确保视频激活策略允许自动发起和接受视频
+            core.videoActivationPolicy?.automaticallyInitiate = true
+            core.videoActivationPolicy?.automaticallyAccept = true
+            print("【SIP日志】已在 acceptCall 中设置 videoActivationPolicy 为自动发起和接受。")
+
             setupFrontCamera()
             let remote = currentCall.remoteAddress?.asString() ?? "未知"
             print("【SIP信令日志】发送200 OK（接听来电），对端=\(remote)")
             try currentCall.acceptWithParams(params: params)
+            print("【SIP日志】成功发送接听请求。")
         } catch {
             print("接听视频通话失败: \(error)")
-                }
-            }
+        }
+    }
             
     // 终止当前通话
     func terminateCall() {
-        guard let call = currentCall else { return }
-        do {
-            let remote = call.remoteAddress?.asString() ?? "未知"
-            print("【SIP信令日志】发送BYE，对端=\(remote)")
-            try call.terminate()
-            self.currentCall = nil
+        print("[SipManager] terminateCall 被调用。")
+        if let call = currentCall {
+            print("[SipManager] currentCall 存在，状态为: \(call.state)")
+            do {
+                let remote = call.remoteAddress?.asString() ?? "未知"
+                print("【SIP信令日志】发送BYE，对端=\(remote)")
+                try call.terminate()
+                print("【SIP日志】成功发送挂断请求。")
+                self.currentCall = nil
+                self.callState = .idle
+            } catch {
+                print("终止通话失败: \(error)")
+            }
+        } else {
+            print("[SipManager] terminateCall: currentCall 为 nil，无需挂断。")
             self.callState = .idle
-        } catch {
-            print("终止通话失败: \(error)")
         }
     }
 
@@ -839,8 +907,13 @@ class SipManager: ObservableObject {
         guard let core = self.core else { return }
         do {
             let params = try core.createCallParams(call: call)
-        params.videoEnabled = true
+            params.videoEnabled = true
             
+            // 确保视频激活策略允许自动发起和接受视频
+            core.videoActivationPolicy?.automaticallyInitiate = true
+            core.videoActivationPolicy?.automaticallyAccept = true
+            print("【SIP日志】已在 acceptVideoCall 中设置 videoActivationPolicy 为自动发起和接受。")
+
             // 确保使用前置摄像头
             setupFrontCamera()
             
@@ -922,6 +995,54 @@ class SipManager: ObservableObject {
     // 6. SIP信令事件
     func onCallStateChanged(_ call: linphonesw.Call, state: linphonesw.Call.State, message: String) {
         print("[SIP日志] 通话状态变化: \(state) - \(message)")
+    }
+
+    // MARK: - Video Display Management
+    
+    /// 设置本地视频预览视图
+    func setLocalVideoDisplayView(_ view: UIView) {
+        self.localVideoView = view // 强引用持有传入的视图
+        guard let core = core else {
+            print("[SipManager] setLocalVideoDisplayView: Core is nil. 无法设置本地视频视图。")
+            return
+        }
+        // 将本地视频视图设置给 Linphone Core
+        core.nativePreviewWindow = view
+        print("[SipManager] 本地视频预览视图已设置。视图实例: \(ObjectIdentifier(view))") // 打印视图实例地址
+    }
+
+    /// 设置远端视频显示视图
+    func setRemoteVideoDisplayView(_ view: UIView) {
+        self.remoteVideoView = view // 强引用持有传入的视图
+        guard let core = core else {
+            print("[SipManager] setRemoteVideoDisplayView: Core is nil. 无法设置远端视频视图。")
+            return
+        }
+        // 将远端视频视图设置给 Linphone Core
+        core.nativeVideoWindow = view
+        print("[SipManager] 远端视频显示视图已设置。视图实例: \(ObjectIdentifier(view))") // 打印视图实例地址
+    }
+
+    /// 获取本地视频预览视图（用于 SwiftUI 封装） - 仅作辅助，不推荐直接使用返回的视图进行渲染
+    func getLocalVideoDisplayView() -> UIView? {
+        return localVideoView
+    }
+
+    /// 获取远端视频显示视图（用于 SwiftUI 封装） - 仅作辅助，不推荐直接使用返回的视图进行渲染
+    func getRemoteVideoDisplayView() -> UIView? {
+        return remoteVideoView
+    }
+
+    // 添加公共方法来清除本地视频视图引用
+    public func clearLocalVideoView() {
+        print("【SIP日志】SipManager.clearLocalVideoView() 被调用。")
+        self.localVideoView = nil
+    }
+
+    // 添加公共方法来清除远端视频视图引用
+    public func clearRemoteVideoView() {
+        print("【SIP日志】SipManager.clearRemoteVideoView() 被调用。")
+        self.remoteVideoView = nil
     }
 
 }
