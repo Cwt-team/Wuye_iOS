@@ -1035,14 +1035,18 @@ class SipManager: ObservableObject {
 
     // 添加公共方法来清除本地视频视图引用
     public func clearLocalVideoView() {
-        print("【SIP日志】SipManager.clearLocalVideoView() 被调用。")
-        self.localVideoView = nil
+        DispatchQueue.main.async { [weak self] in
+            print("【SIP日志】SipManager.clearLocalVideoView() 被调用。")
+            self?.localVideoView = nil
+        }
     }
 
     // 添加公共方法来清除远端视频视图引用
     public func clearRemoteVideoView() {
-        print("【SIP日志】SipManager.clearRemoteVideoView() 被调用。")
-        self.remoteVideoView = nil
+        DispatchQueue.main.async { [weak self] in
+            print("【SIP日志】SipManager.clearRemoteVideoView() 被调用。")
+            self?.remoteVideoView = nil
+        }
     }
 
 }

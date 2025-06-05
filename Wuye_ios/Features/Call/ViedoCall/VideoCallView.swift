@@ -3,6 +3,7 @@ import linphonesw
 
 /// 视频通话主界面
 struct VideoCallView: View {
+    @Environment(\.presentationMode) var presentationMode   // 新增
     @EnvironmentObject var videoCallManager: VideoCallManager
     @EnvironmentObject var sipManager: SipManager // 确保 SipManager 是 EnvironmentObject
     let call: linphonesw.Call // This `call` might be the initial incoming call from the previous screen.
@@ -91,6 +92,12 @@ struct VideoCallView: View {
         }
         .onDisappear {
             videoCallManager.hangup()
+        }
+        .onChange(of: sipManager.callState) { newState in
+            // 监听通话状态变化
+            if newState == .ended || newState == .idle || newState == .error {
+                presentationMode.wrappedValue.dismiss()
+            }
         }
     }
 }

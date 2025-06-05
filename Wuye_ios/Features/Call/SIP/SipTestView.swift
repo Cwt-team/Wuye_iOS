@@ -428,7 +428,7 @@ struct SipTestView: View {
     
     private func endCall() {
         addLog("SIP日志: 正在结束通话")
-        sipManager.terminateCall()
+        CallManager.shared.endCall()
     }
     
     private func toggleMute() {
